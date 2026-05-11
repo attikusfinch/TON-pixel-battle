@@ -509,6 +509,13 @@ input:focus {
   grid-template-columns: 1fr 1fr;
 }
 
+.input-action-row {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .primary,
 .ghost {
   align-items: center;
@@ -530,6 +537,12 @@ input:focus {
 .ghost {
   background: var(--soft);
   color: var(--ink);
+}
+
+.primary:disabled,
+.ghost:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .full-width {
@@ -1001,6 +1014,7 @@ input:focus {
 
   .coordinate-row,
   .button-row,
+  .input-action-row,
   .price-strip {
     grid-template-columns: 1fr;
   }

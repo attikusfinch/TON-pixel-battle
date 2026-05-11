@@ -237,6 +237,9 @@ export default function App() {
     () => localStorage.getItem('myPixelBoardAddress') ?? '',
   );
   const [boardAddress, setBoardAddress] = useState(() => localStorage.getItem('playBoardAddress') ?? '');
+  const [boardAddressDraft, setBoardAddressDraft] = useState(
+    () => localStorage.getItem('playBoardAddress') ?? '',
+  );
   const [payoutWallet, setPayoutWallet] = useState('');
   const [boardSeed, setBoardSeed] = useState(
     () => localStorage.getItem('pixelBoardSeed') ?? createRandomBoardSeed(),
@@ -287,6 +290,7 @@ export default function App() {
   }, [boardSeed, network, payoutWallet, walletAddress]);
   const boardSize = Math.round(BOARD_BASE_SIZE * boardZoom);
   const boardSizeStyle = { '--board-size': `${boardSize}px` } as CSSProperties;
+  const canApplyBoardDraft = boardAddressDraft.trim() !== boardAddress.trim();
 
   useEffect(() => {
     setGridState((current) =>
@@ -381,9 +385,17 @@ export default function App() {
   }
 
   function setPlayBoard(address: string, boardNetwork = network) {
+    const normalizedAddress = address.trim();
     setNetwork(boardNetwork);
-    setBoardAddress(address);
-    localStorage.setItem('playBoardAddress', address);
+    setBoardAddress(normalizedAddress);
+    setBoardAddressDraft(normalizedAddress);
+    localStorage.setItem('playBoardAddress', normalizedAddress);
+  }
+
+  function applyBoardAddress() {
+    setPlayBoard(boardAddressDraft);
+    const normalizedAddress = boardAddressDraft.trim();
+    setStatus(normalizedAddress ? `Board applied: ${shortAddress(normalizedAddress)}` : 'Board cleared');
   }
 
   function rememberBoard(address: string, boardNetwork = network, label?: string) {
@@ -436,6 +448,7 @@ export default function App() {
       localStorage.setItem('playBoardAddress', deployment.address);
       setMyBoardAddress(deployment.address);
       setBoardAddress(deployment.address);
+      setBoardAddressDraft(deployment.address);
       rememberBoard(deployment.address, network, `Seed ${boardSeed}`);
       setGridForKey(gridStorageKey(network, deployment.address), createEmptyGrid());
       setActiveView('boards');
@@ -818,14 +831,24 @@ export default function App() {
                 <Grid3X3 size={18} />
                 <span>Boards</span>
               </div>
-              <label>
-                Active board
-                <input
-                  value={boardAddress}
-                  onChange={(event) => setPlayBoard(event.target.value)}
-                  placeholder="Board address"
-                />
-              </label>
+              <div className="input-action-row">
+                <label>
+                  Active board
+                  <input
+                    value={boardAddressDraft}
+                    onChange={(event) => setBoardAddressDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        applyBoardAddress();
+                      }
+                    }}
+                    placeholder="Board address"
+                  />
+                </label>
+                <button className="primary" disabled={!canApplyBoardDraft} onClick={applyBoardAddress} type="button">
+                  Apply
+                </button>
+              </div>
               <div className="button-row">
                 <button className="ghost" onClick={saveCurrentBoard} type="button">
                   <BookmarkPlus size={17} />
