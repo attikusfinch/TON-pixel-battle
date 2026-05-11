@@ -1,19 +1,24 @@
-import type { CSSProperties } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import type { CSSProperties, PointerEvent } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { TonConnectButton, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
 import {
   BookmarkPlus,
+  BookOpen,
   CircleDollarSign,
   Eraser,
+  ExternalLink,
   Grid3X3,
   ImagePlus,
   Layers3,
+  Maximize2,
   Pause,
   Play,
   RefreshCw,
+  RotateCcw,
   Settings2,
   Trash2,
   Upload,
+  X,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
@@ -53,7 +58,28 @@ type SavedBoard = {
   savedAt: number;
 };
 
+type FullImage = {
+  imageUrl: string;
+  x?: number;
+  y?: number;
+  nextPriceNano?: bigint;
+};
+
+type BoardDragState = {
+  active: boolean;
+  moved: boolean;
+  pointerId: number | null;
+  startX: number;
+  startY: number;
+  scrollLeft: number;
+  scrollTop: number;
+};
+
 const SAVED_BOARDS_KEY = 'imageBattleSavedBoards';
+const BOARD_BASE_SIZE = 640;
+const MIN_BOARD_ZOOM = 0.5;
+const MAX_BOARD_ZOOM = 4;
+const BOARD_ZOOM_STEP = 0.25;
 
 function createEmptyGrid(): PixelCell[] {
   return Array.from({ length: BOARD_WIDTH * BOARD_HEIGHT }, () => ({
@@ -183,9 +209,26 @@ function formatTon(nano: bigint): string {
   return fraction ? `${whole}.${fraction}` : whole.toString();
 }
 
+function normalizeZoom(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 1;
+  }
+  return Math.min(MAX_BOARD_ZOOM, Math.max(MIN_BOARD_ZOOM, Number(value.toFixed(2))));
+}
+
 export default function App() {
   const [tonConnectUI] = useTonConnectUI();
   const walletAddress = useTonAddress(false);
+  const boardScrollRef = useRef<HTMLDivElement>(null);
+  const boardDragRef = useRef<BoardDragState>({
+    active: false,
+    moved: false,
+    pointerId: null,
+    scrollLeft: 0,
+    scrollTop: 0,
+    startX: 0,
+    startY: 0,
+  });
   const [activeView, setActiveView] = useState<ActiveView>('boards');
   const [network, setNetwork] = useState<Network>(
     () => (localStorage.getItem('pixelBattleNetwork') as Network | null) ?? 'testnet',
@@ -210,6 +253,9 @@ export default function App() {
   const [status, setStatus] = useState('Ready');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [boardZoom, setBoardZoom] = useState(1);
+  const [isPanningBoard, setIsPanningBoard] = useState(false);
+  const [fullImage, setFullImage] = useState<FullImage | null>(null);
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
 
   const grid = gridState.cells;
   const selectedIndex = useMemo(() => cellIndex(selectedCell.x, selectedCell.y), [selectedCell]);
@@ -239,6 +285,8 @@ export default function App() {
       return '';
     }
   }, [boardSeed, network, payoutWallet, walletAddress]);
+  const boardSize = Math.round(BOARD_BASE_SIZE * boardZoom);
+  const boardSizeStyle = { '--board-size': `${boardSize}px` } as CSSProperties;
 
   useEffect(() => {
     setGridState((current) =>
@@ -267,6 +315,57 @@ export default function App() {
   useEffect(() => {
     saveSavedBoards(savedBoards);
   }, [savedBoards]);
+
+  useEffect(() => {
+    if (!fullImage && !isGuideOpen) {
+      return undefined;
+    }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setIsGuideOpen(false);
+        setFullImage(null);
+      }
+    }
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [fullImage, isGuideOpen]);
+
+  useEffect(() => {
+    const scroller = boardScrollRef.current;
+    if (!scroller) {
+      return undefined;
+    }
+    const cellSize = boardSize / BOARD_WIDTH;
+    const margin = Math.max(cellSize, 24);
+    const targetLeft = selectedCell.x * cellSize;
+    const targetTop = selectedCell.y * cellSize;
+    const targetRight = targetLeft + cellSize;
+    const targetBottom = targetTop + cellSize;
+
+    let nextLeft = scroller.scrollLeft;
+    let nextTop = scroller.scrollTop;
+
+    if (targetLeft < scroller.scrollLeft + margin) {
+      nextLeft = Math.max(0, targetLeft - margin);
+    } else if (targetRight > scroller.scrollLeft + scroller.clientWidth - margin) {
+      nextLeft = targetRight - scroller.clientWidth + margin;
+    }
+
+    if (targetTop < scroller.scrollTop + margin) {
+      nextTop = Math.max(0, targetTop - margin);
+    } else if (targetBottom > scroller.scrollTop + scroller.clientHeight - margin) {
+      nextTop = targetBottom - scroller.clientHeight + margin;
+    }
+
+    if (nextLeft === scroller.scrollLeft && nextTop === scroller.scrollTop) {
+      return undefined;
+    }
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      scroller.scrollTo({ behavior: 'smooth', left: nextLeft, top: nextTop });
+    });
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [boardSize, selectedCell.x, selectedCell.y]);
 
   function setGridForKey(
     key: string,
@@ -398,11 +497,26 @@ export default function App() {
   }
 
   function zoomOut() {
-    setBoardZoom((current) => Math.max(0.75, Number((current - 0.25).toFixed(2))));
+    setBoardZoom((current) => normalizeZoom(current - BOARD_ZOOM_STEP));
   }
 
   function zoomIn() {
-    setBoardZoom((current) => Math.min(3, Number((current + 0.25).toFixed(2))));
+    setBoardZoom((current) => normalizeZoom(current + BOARD_ZOOM_STEP));
+  }
+
+  function resetBoardZoom() {
+    setBoardZoom(1);
+  }
+
+  function fitBoardToView() {
+    const scroller = boardScrollRef.current;
+    if (!scroller) {
+      setBoardZoom(1);
+      return;
+    }
+    const fitZoom = (scroller.clientWidth - 2) / BOARD_BASE_SIZE;
+    setBoardZoom(normalizeZoom(fitZoom));
+    scroller.scrollTo({ left: 0, top: 0 });
   }
 
   function randomizeBoardSeed() {
@@ -451,6 +565,73 @@ export default function App() {
     setStatus('Local grid cleared');
   }
 
+  function startBoardPan(event: PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) {
+      return;
+    }
+    const scroller = boardScrollRef.current;
+    if (!scroller || (scroller.scrollWidth <= scroller.clientWidth && scroller.scrollHeight <= scroller.clientHeight)) {
+      return;
+    }
+    boardDragRef.current = {
+      active: true,
+      moved: false,
+      pointerId: event.pointerId,
+      scrollLeft: scroller.scrollLeft,
+      scrollTop: scroller.scrollTop,
+      startX: event.clientX,
+      startY: event.clientY,
+    };
+    setIsPanningBoard(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function moveBoardPan(event: PointerEvent<HTMLDivElement>) {
+    const drag = boardDragRef.current;
+    const scroller = boardScrollRef.current;
+    if (!drag.active || drag.pointerId !== event.pointerId || !scroller) {
+      return;
+    }
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) {
+      drag.moved = true;
+      event.preventDefault();
+    }
+    scroller.scrollLeft = drag.scrollLeft - deltaX;
+    scroller.scrollTop = drag.scrollTop - deltaY;
+  }
+
+  function stopBoardPan(event: PointerEvent<HTMLDivElement>) {
+    const drag = boardDragRef.current;
+    if (!drag.active || drag.pointerId !== event.pointerId) {
+      return;
+    }
+    drag.active = false;
+    drag.pointerId = null;
+    setIsPanningBoard(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function selectBoardCell(cell: PixelCell, x: number, y: number) {
+    const wasDragging = boardDragRef.current.moved;
+    boardDragRef.current.moved = false;
+    if (wasDragging) {
+      return;
+    }
+    setSelectedCell({ x, y });
+    if (cell.imageUrl) {
+      setFullImage({
+        imageUrl: cell.imageUrl,
+        nextPriceNano: cell.nextPriceNano,
+        x,
+        y,
+      });
+    }
+  }
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -459,6 +640,7 @@ export default function App() {
           <div>
             <div className="eyebrow">TON contract game</div>
             <h1>Image Battle</h1>
+            <div className="creator-credit">by @fiscaldev on TON</div>
           </div>
         </div>
         <nav className="mode-tabs" aria-label="Workspace">
@@ -495,6 +677,10 @@ export default function App() {
             Owner
           </button>
         </nav>
+        <button className="guide-button" onClick={() => setIsGuideOpen(true)} type="button">
+          <BookOpen size={17} />
+          Guide
+        </button>
         <TonConnectButton />
       </header>
 
@@ -550,9 +736,26 @@ export default function App() {
               <button className="tool-button square" onClick={zoomOut} title="Zoom out" type="button">
                 <ZoomOut size={17} />
               </button>
-              <span className="zoom-value">{Math.round(boardZoom * 100)}%</span>
+              <label className="zoom-control" aria-label="Board zoom">
+                <input
+                  max={MAX_BOARD_ZOOM}
+                  min={MIN_BOARD_ZOOM}
+                  onChange={(event) => setBoardZoom(normalizeZoom(Number(event.target.value)))}
+                  step={0.05}
+                  type="range"
+                  value={boardZoom}
+                />
+                <span>{Math.round(boardZoom * 100)}%</span>
+              </label>
               <button className="tool-button square" onClick={zoomIn} title="Zoom in" type="button">
                 <ZoomIn size={17} />
+              </button>
+              <button className="tool-button square" onClick={resetBoardZoom} title="Reset zoom" type="button">
+                <RotateCcw size={17} />
+              </button>
+              <button className="tool-button fit-button" onClick={fitBoardToView} title="Fit board" type="button">
+                <Maximize2 size={17} />
+                <span>Fit</span>
               </button>
             </div>
             <div className="network-toggle" aria-label="Network">
@@ -573,12 +776,20 @@ export default function App() {
             </div>
           </div>
 
-          <div className="board-scroll">
+          <div
+            className={`board-scroll ${isPanningBoard ? 'is-panning' : ''}`}
+            onPointerCancel={stopBoardPan}
+            onPointerDown={startBoardPan}
+            onPointerLeave={stopBoardPan}
+            onPointerMove={moveBoardPan}
+            onPointerUp={stopBoardPan}
+            ref={boardScrollRef}
+            style={boardSizeStyle}
+          >
             <div
               className="pixel-board"
               role="grid"
               aria-label="Image board"
-              style={{ '--board-size': `${Math.round(640 * boardZoom)}px` } as CSSProperties}
             >
               {grid.map((cell, index) => {
                 const x = index % BOARD_WIDTH;
@@ -587,12 +798,12 @@ export default function App() {
                 return (
                   <button
                     key={`${x}-${y}`}
-                    className={`pixel ${selected ? 'selected' : ''} ${cell.pending ? 'pending' : ''}`}
-                    onClick={() => setSelectedCell({ x, y })}
+                    className={`pixel ${cell.imageUrl ? 'has-image' : ''} ${selected ? 'selected' : ''} ${cell.pending ? 'pending' : ''}`}
+                    onClick={() => selectBoardCell(cell, x, y)}
                     type="button"
-                    aria-label={`Cell ${x}, ${y}`}
+                    aria-label={cell.imageUrl ? `Open image at cell ${x}, ${y}` : `Cell ${x}, ${y}`}
                   >
-                    {cell.imageUrl ? <img src={cell.imageUrl} alt="" loading="lazy" /> : null}
+                    {cell.imageUrl ? <img src={cell.imageUrl} alt="" draggable={false} loading="lazy" /> : null}
                   </button>
                 );
               })}
@@ -715,9 +926,19 @@ export default function App() {
                 <ImagePlus size={18} />
                 <span>Image</span>
               </div>
-              <div className="image-preview">
+              <button
+                aria-label="Open image preview"
+                className="image-preview"
+                disabled={!previewImageUrl}
+                onClick={() => {
+                  if (previewImageUrl) {
+                    setFullImage({ imageUrl: previewImageUrl });
+                  }
+                }}
+                type="button"
+              >
                 {previewImageUrl ? <img src={previewImageUrl} alt="" /> : <span>Preview</span>}
-              </div>
+              </button>
               <div className="coordinate-row">
                 <label>
                   X
@@ -817,6 +1038,90 @@ export default function App() {
           <div className="status-line">{status}</div>
         </aside>
       </section>
+
+      {fullImage ? (
+        <div
+          className="image-lightbox"
+          onClick={() => setFullImage(null)}
+          role="dialog"
+          aria-label="Full image preview"
+          aria-modal="true"
+        >
+          <div className="image-lightbox-card" onClick={(event) => event.stopPropagation()}>
+            <div className="image-lightbox-top">
+              <div>
+                <span>{typeof fullImage.x === 'number' ? `Cell ${fullImage.x}, ${fullImage.y}` : 'Preview'}</span>
+                <strong>Full image</strong>
+              </div>
+              <button className="icon-button" onClick={() => setFullImage(null)} title="Close" type="button">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="image-lightbox-frame">
+              <img src={fullImage.imageUrl} alt="" />
+            </div>
+            <div className="image-lightbox-meta">
+              {fullImage.nextPriceNano ? (
+                <div>
+                  <span>Next price</span>
+                  <strong>{formatTon(fullImage.nextPriceNano)} TON</strong>
+                </div>
+              ) : null}
+              <a href={fullImage.imageUrl} rel="noreferrer" target="_blank">
+                <ExternalLink size={17} />
+                Open URL
+              </a>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isGuideOpen ? (
+        <div
+          className="guide-overlay"
+          onClick={() => setIsGuideOpen(false)}
+          role="dialog"
+          aria-label="Image Battle guide"
+          aria-modal="true"
+        >
+          <div className="guide-card" onClick={(event) => event.stopPropagation()}>
+            <div className="guide-top">
+              <div>
+                <span>Quick guide</span>
+                <strong>How to play Image Battle</strong>
+              </div>
+              <button className="icon-button" onClick={() => setIsGuideOpen(false)} title="Close" type="button">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="guide-steps">
+              <div>
+                <span>01</span>
+                <strong>Pick a board</strong>
+                <p>Open Boards, paste any board address, or use Mine after you deploy your own board.</p>
+              </div>
+              <div>
+                <span>02</span>
+                <strong>Deploy your board</strong>
+                <p>Open Deploy, set payout wallet and seed. A different seed gives the same wallet another board.</p>
+              </div>
+              <div>
+                <span>03</span>
+                <strong>Place an image</strong>
+                <p>Open Image, choose a cell, paste a jpg/png/webp URL, then confirm the TonConnect transaction.</p>
+              </div>
+              <div>
+                <span>04</span>
+                <strong>Repurchase rules</strong>
+                <p>First buy is 0.02 TON. Every next buy for the same cell costs 2x more. Extra gas buffer is refunded.</p>
+              </div>
+            </div>
+            <div className="guide-note">
+              Click any placed image on the board to open the full version. Use zoom, fit, and drag to move around big boards.
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }

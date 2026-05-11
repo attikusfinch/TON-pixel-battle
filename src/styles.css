@@ -34,6 +34,12 @@ button {
   border: 0;
 }
 
+button:focus-visible,
+a:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.16);
+}
+
 .app-shell {
   min-height: 100vh;
   padding: 18px 24px 28px;
@@ -46,7 +52,7 @@ button {
   border-radius: 28px;
   display: grid;
   gap: 16px;
-  grid-template-columns: minmax(220px, 1fr) auto auto;
+  grid-template-columns: minmax(220px, 1fr) auto auto auto;
   margin: 0 auto 18px;
   max-width: 1360px;
   padding: 10px 12px 10px 18px;
@@ -87,6 +93,31 @@ h1 {
   font-size: 22px;
   line-height: 1;
   margin: 3px 0 0;
+}
+
+.creator-credit {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  margin-top: 5px;
+}
+
+.guide-button {
+  align-items: center;
+  background: var(--ink);
+  border-radius: 999px;
+  color: #ffffff;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 900;
+  gap: 8px;
+  justify-content: center;
+  justify-self: start;
+  min-height: 42px;
+  padding: 0 15px;
+  white-space: nowrap;
 }
 
 .mode-tabs {
@@ -257,6 +288,7 @@ h1 {
 .tool-group {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -295,13 +327,66 @@ h1 {
   text-align: center;
 }
 
+.zoom-control {
+  align-items: center;
+  background: var(--soft);
+  border-radius: 999px;
+  color: #3f4844;
+  display: inline-flex;
+  flex: 0 1 170px;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 12px;
+  text-transform: none;
+}
+
+.zoom-control input[type="range"] {
+  accent-color: var(--ink);
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  cursor: pointer;
+  min-height: 0;
+  padding: 0;
+}
+
+.zoom-control span {
+  color: var(--ink);
+  flex: 0 0 42px;
+  font-size: 13px;
+  font-weight: 850;
+  text-align: right;
+}
+
 .board-scroll {
   background: #dfe5df;
   border-radius: 18px;
-  max-height: calc(100vh - 260px);
+  cursor: grab;
+  height: min(72vh, var(--board-size));
+  max-height: 760px;
   max-width: 100%;
+  min-height: min(360px, var(--board-size));
+  overscroll-behavior: contain;
   overflow: auto;
+  touch-action: none;
+  user-select: none;
   width: fit-content;
+}
+
+.board-scroll.is-panning,
+.board-scroll.is-panning .pixel {
+  cursor: grabbing;
+}
+
+.board-scroll::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+
+.board-scroll::-webkit-scrollbar-thumb {
+  background: rgba(12, 17, 16, 0.22);
+  border: 3px solid #dfe5df;
+  border-radius: 999px;
 }
 
 .pixel-board {
@@ -327,6 +412,7 @@ h1 {
   outline: 0;
   padding: 0;
   position: relative;
+  transition: filter 140ms ease;
 }
 
 .pixel img {
@@ -334,7 +420,19 @@ h1 {
   display: block;
   height: 100%;
   object-fit: cover;
+  pointer-events: none;
   width: 100%;
+}
+
+@media (hover: hover) {
+  .pixel:hover {
+    filter: brightness(0.94);
+  }
+}
+
+.pixel:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
+  z-index: 2;
 }
 
 .pixel.selected::after {
@@ -500,13 +598,23 @@ input:focus {
   font-weight: 850;
   max-height: 240px;
   overflow: hidden;
+  padding: 0;
   place-items: center;
+  width: 100%;
 }
 
 .image-preview img {
   height: 100%;
   object-fit: cover;
   width: 100%;
+}
+
+.image-preview:disabled {
+  cursor: default;
+}
+
+.image-preview:not(:disabled) {
+  cursor: zoom-in;
 }
 
 .price-strip {
@@ -538,9 +646,181 @@ input:focus {
   padding: 14px 16px;
 }
 
+.image-lightbox {
+  align-items: center;
+  background: rgba(12, 17, 16, 0.72);
+  backdrop-filter: blur(12px);
+  display: grid;
+  inset: 0;
+  padding: 24px;
+  position: fixed;
+  z-index: 20;
+}
+
+.guide-overlay {
+  align-items: center;
+  background: rgba(12, 17, 16, 0.5);
+  backdrop-filter: blur(10px);
+  display: grid;
+  inset: 0;
+  padding: 24px;
+  position: fixed;
+  z-index: 21;
+}
+
+.guide-card {
+  background: var(--panel);
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  border-radius: 28px;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.24);
+  display: grid;
+  gap: 16px;
+  margin: 0 auto;
+  max-height: calc(100vh - 48px);
+  max-width: 780px;
+  overflow: auto;
+  padding: 18px;
+  width: 100%;
+}
+
+.guide-top {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+}
+
+.guide-top span,
+.guide-steps span {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.guide-top strong {
+  display: block;
+  font-size: 24px;
+  line-height: 1.05;
+  margin-top: 4px;
+}
+
+.guide-steps {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.guide-steps div,
+.guide-note {
+  background: var(--soft);
+  border-radius: 18px;
+  padding: 14px;
+}
+
+.guide-steps strong {
+  display: block;
+  font-size: 17px;
+  margin-top: 8px;
+}
+
+.guide-steps p,
+.guide-note {
+  color: #3f4844;
+  font-size: 14px;
+  line-height: 1.35;
+  margin: 8px 0 0;
+}
+
+.guide-note {
+  font-weight: 800;
+  margin: 0;
+}
+
+.image-lightbox-card {
+  background: var(--panel);
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  border-radius: 28px;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.32);
+  display: grid;
+  gap: 14px;
+  margin: 0 auto;
+  max-height: calc(100vh - 48px);
+  max-width: min(980px, 100%);
+  overflow: hidden;
+  padding: 14px;
+  width: 100%;
+}
+
+.image-lightbox-top,
+.image-lightbox-meta {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.image-lightbox-top span,
+.image-lightbox-meta span {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.image-lightbox-top strong,
+.image-lightbox-meta strong {
+  display: block;
+  font-size: 18px;
+  margin-top: 3px;
+}
+
+.image-lightbox-frame {
+  align-items: center;
+  background:
+    linear-gradient(45deg, #eef1ed 25%, transparent 25%),
+    linear-gradient(-45deg, #eef1ed 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #eef1ed 75%),
+    linear-gradient(-45deg, transparent 75%, #eef1ed 75%);
+  background-color: #ffffff;
+  background-position:
+    0 0,
+    0 10px,
+    10px -10px,
+    -10px 0;
+  background-size: 20px 20px;
+  border-radius: 18px;
+  display: grid;
+  min-height: 360px;
+  overflow: hidden;
+  place-items: center;
+}
+
+.image-lightbox-frame img {
+  display: block;
+  max-height: min(68vh, 720px);
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.image-lightbox-meta a {
+  align-items: center;
+  background: var(--ink);
+  border-radius: 999px;
+  color: #ffffff;
+  display: inline-flex;
+  font-size: 14px;
+  font-weight: 900;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 15px;
+  text-decoration: none;
+}
+
 @media (max-width: 1120px) {
   .topbar {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: 1fr auto auto;
   }
 
   .mode-tabs {
@@ -551,17 +831,8 @@ input:focus {
     overflow-x: auto;
   }
 
-  .app-intro,
-  .workspace {
+  .app-intro {
     grid-template-columns: 1fr;
-  }
-
-  .control-panel {
-    order: 1;
-  }
-
-  .board-area {
-    order: 2;
   }
 
   .app-intro h2 {
@@ -573,7 +844,21 @@ input:focus {
   }
 
   .board-scroll {
-    max-height: none;
+    height: min(68vh, var(--board-size));
+  }
+}
+
+@media (max-width: 900px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .board-area {
+    order: 1;
+  }
+
+  .control-panel {
+    order: 2;
   }
 }
 
@@ -590,24 +875,127 @@ input:focus {
   }
 
   .topbar {
+    gap: 10px;
     grid-template-columns: 1fr;
+    padding: 12px;
+  }
+
+  .guide-button {
+    justify-self: stretch;
+    width: 100%;
+  }
+
+  .brand-mark {
+    height: 36px;
+    width: 36px;
+  }
+
+  h1 {
+    font-size: 20px;
+  }
+
+  .mode-tabs {
+    margin: 0 -4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    width: calc(100% + 8px);
+  }
+
+  .mode-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mode-tabs button {
+    flex: 0 0 auto;
+    min-height: 36px;
+    padding: 0 12px;
   }
 
   .app-intro h2 {
-    font-size: 40px;
+    font-size: 34px;
+    line-height: 0.98;
   }
 
-  .intro-stats,
-  .board-toolbar,
-  .tool-group {
+  .app-intro {
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+
+  .intro-stats {
+    border-radius: 18px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .intro-stats div {
+    padding: 12px 10px;
+  }
+
+  .intro-stats strong {
+    font-size: 16px;
+  }
+
+  .workspace {
+    gap: 12px;
+  }
+
+  .board-area {
+    padding: 12px;
+  }
+
+  .board-toolbar {
     align-items: stretch;
     display: grid;
-    grid-template-columns: 1fr;
+    gap: 8px;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .board-heading,
+  .tool-group,
+  .network-toggle {
+    grid-column: 1 / -1;
+  }
+
+  .board-heading {
+    min-width: 0;
+  }
+
+  .board-heading strong {
+    font-size: 22px;
+  }
+
+  .tool-group {
+    align-items: center;
+    display: flex;
+    gap: 6px;
   }
 
   .metric,
-  .network-toggle,
-  .tool-button {
+  .network-toggle {
+    width: 100%;
+  }
+
+  .metric {
+    min-width: 0;
+  }
+
+  .tool-group .tool-button:first-child,
+  .fit-button {
+    flex: 1 1 110px;
+  }
+
+  .tool-button.square {
+    flex: 0 0 40px;
+  }
+
+  .zoom-control {
+    flex: 1 1 100%;
+    order: 2;
+  }
+
+  .board-scroll {
+    border-radius: 14px;
+    height: min(62vh, var(--board-size));
+    min-height: min(280px, var(--board-size));
     width: 100%;
   }
 
@@ -615,5 +1003,53 @@ input:focus {
   .button-row,
   .price-strip {
     grid-template-columns: 1fr;
+  }
+
+  .image-lightbox {
+    padding: 10px;
+  }
+
+  .guide-overlay {
+    padding: 10px;
+  }
+
+  .guide-card {
+    border-radius: 20px;
+    max-height: calc(100vh - 20px);
+    padding: 12px;
+  }
+
+  .guide-top strong {
+    font-size: 21px;
+  }
+
+  .guide-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .image-lightbox-card {
+    border-radius: 20px;
+    max-height: calc(100vh - 20px);
+    padding: 10px;
+  }
+
+  .image-lightbox-top,
+  .image-lightbox-meta {
+    align-items: stretch;
+    display: grid;
+    grid-template-columns: 1fr auto;
+  }
+
+  .image-lightbox-frame {
+    border-radius: 14px;
+    min-height: 260px;
+  }
+
+  .image-lightbox-frame img {
+    max-height: 62vh;
+  }
+
+  .image-lightbox-meta a {
+    justify-content: center;
   }
 }
