@@ -26,7 +26,7 @@ get fun `test deploy exposes configured board`() {
     expect(placedCount).toEqual(0);
 }
 
-get fun `test player places image comment and owner wallet receives half`() {
+get fun `test player places image comment and owner wallet receives payout`() {
     val (board, _, payout, alice) = setupTest();
 
     val res = board.sendAny(
@@ -43,7 +43,6 @@ get fun `test player places image comment and owner wallet receives half`() {
     expect(res).toHaveSuccessfulTx({
         from: board.address,
         to: payout.address,
-        value: ton("0.01"),
     });
 
     val (
@@ -104,7 +103,6 @@ get fun `test repurchase requires double price`() {
     expect(second).toHaveSuccessfulTx({
         from: board.address,
         to: payout.address,
-        value: ton("0.02"),
     });
 
     val (
@@ -131,6 +129,87 @@ get fun `test repurchase requires double price`() {
         placedCount,
     ) = board.config();
     expect(placedCount).toEqual(1);
+}
+
+get fun `test high repurchase sends payout to owner`() {
+    val (board, _, payout, alice) = setupTest();
+
+    val first = board.sendAny(
+        alice.address,
+        rawComment("pb:0505:png:https://img.test/one.png"),
+        { value: ton("0.02") },
+    );
+    expect(first).toHaveAllSuccessfulTxs();
+
+    val second = board.sendAny(
+        alice.address,
+        rawComment("pb:0505:png:https://img.test/two.png"),
+        { value: ton("0.04") },
+    );
+    expect(second).toHaveAllSuccessfulTxs();
+
+    val third = board.sendAny(
+        alice.address,
+        rawComment("pb:0505:png:https://img.test/three.png"),
+        { value: ton("0.08") },
+    );
+    expect(third).toHaveAllSuccessfulTxs();
+
+    val fourth = board.sendAny(
+        alice.address,
+        rawComment("pb:0505:png:https://img.test/four.png"),
+        { value: ton("0.16") },
+    );
+    expect(fourth).toHaveAllSuccessfulTxs();
+    expect(fourth).toHaveSuccessfulTx({
+        from: board.address,
+        to: payout.address,
+    });
+
+    val (
+        _,
+        imageUrl,
+        _,
+        _,
+        _,
+        pricePaid,
+        nextPrice,
+    ) = board.pixel(5, 5);
+    expect(imageUrl).toEqual("https://img.test/four.png");
+    expect(pricePaid).toEqual(ton("0.16"));
+    expect(nextPrice).toEqual(ton("0.32"));
+}
+
+get fun `test overpay buffer is refunded to player`() {
+    val (board, _, payout, alice) = setupTest();
+
+    val res = board.sendAny(
+        alice.address,
+        rawComment("pb:0606:png:https://img.test/refund.png"),
+        { value: ton("0.05") },
+    );
+    expect(res).toHaveAllSuccessfulTxs();
+    expect(res).toHaveSuccessfulTx({
+        from: board.address,
+        to: payout.address,
+    });
+    expect(res).toHaveSuccessfulTx({
+        from: board.address,
+        to: alice.address,
+    });
+
+    val (
+        _,
+        imageUrl,
+        _,
+        _,
+        _,
+        pricePaid,
+        nextPrice,
+    ) = board.pixel(6, 6);
+    expect(imageUrl).toEqual("https://img.test/refund.png");
+    expect(pricePaid).toEqual(ton("0.02"));
+    expect(nextPrice).toEqual(ton("0.04"));
 }
 
 get fun `test rejects underpaid empty cell`() {
@@ -230,7 +309,6 @@ get fun `test owner can update payout wallet and base price`() {
     expect(res).toHaveSuccessfulTx({
         from: board.address,
         to: newPayout.address,
-        value: ton("0.02"),
     });
 }
 

@@ -18,17 +18,23 @@ export type TonConnectTransaction = {
 export const BOARD_WIDTH = 32;
 export const BOARD_HEIGHT = 32;
 export const PIXEL_PRICE_TON = '0.02';
-export const OWNER_SHARE_TON = '0.01';
+export const GAS_BUFFER_TON = '0.03';
 export const DEPLOY_VALUE_TON = '0.5';
 
 const TX_TTL_SECONDS = 300;
 const DEFAULT_WIDTH = BigInt(BOARD_WIDTH);
 const DEFAULT_HEIGHT = BigInt(BOARD_HEIGHT);
 const PIXEL_PRICE = toNano(PIXEL_PRICE_TON);
+const GAS_BUFFER = toNano(GAS_BUFFER_TON);
 const DEPLOY_VALUE = toNano(DEPLOY_VALUE_TON);
 const ADMIN_MESSAGE_VALUE = toNano('0.03');
 
 export const BASE_PIXEL_PRICE_NANO = PIXEL_PRICE;
+export const GAS_BUFFER_NANO = GAS_BUFFER;
+
+export function attachedValueForPrice(priceNano: bigint): bigint {
+  return priceNano + GAS_BUFFER;
+}
 
 function validUntil(): number {
   return Math.floor(Date.now() / 1000) + TX_TTL_SECONDS;

@@ -15,7 +15,9 @@ import {
   BOARD_HEIGHT,
   BOARD_WIDTH,
   DEPLOY_VALUE_TON,
+  GAS_BUFFER_TON,
   type Network,
+  attachedValueForPrice,
   createBoardDeployment,
   createPlaceImageTransaction,
   createSetPausedTransaction,
@@ -98,7 +100,10 @@ export default function App() {
   const [tonConnectUI] = useTonConnectUI();
   const walletAddress = useTonAddress(false);
   const [network, setNetwork] = useState<Network>('testnet');
-  const [boardAddress, setBoardAddress] = useState(() => localStorage.getItem('pixelBoardAddress') ?? '');
+  const [myBoardAddress, setMyBoardAddress] = useState(
+    () => localStorage.getItem('myPixelBoardAddress') ?? '',
+  );
+  const [boardAddress, setBoardAddress] = useState(() => localStorage.getItem('playBoardAddress') ?? '');
   const [payoutWallet, setPayoutWallet] = useState('');
   const [imageUrl, setImageUrl] = useState('https://placehold.co/256x256/png');
   const [selectedCell, setSelectedCell] = useState({ x: 0, y: 0 });
@@ -128,7 +133,9 @@ export default function App() {
       const deployment = createBoardDeployment(owner, payout, network);
       setStatus('Confirm deploy in wallet');
       await tonConnectUI.sendTransaction(deployment.transaction);
-      localStorage.setItem('pixelBoardAddress', deployment.address);
+      localStorage.setItem('myPixelBoardAddress', deployment.address);
+      localStorage.setItem('playBoardAddress', deployment.address);
+      setMyBoardAddress(deployment.address);
       setBoardAddress(deployment.address);
       setStatus(`Deploy sent: ${shortAddress(deployment.address)}`);
     } catch (error) {
@@ -145,10 +152,10 @@ export default function App() {
         selectedCell.x,
         selectedCell.y,
         normalizedUrl,
-        selectedPixel.nextPriceNano,
+        attachedValueForPrice(selectedPixel.nextPriceNano),
         network,
       );
-      setStatus(`Confirm ${formatTon(selectedPixel.nextPriceNano)} TON`);
+      setStatus(`Confirm ${formatTon(attachedValueForPrice(selectedPixel.nextPriceNano))} TON`);
       await tonConnectUI.sendTransaction(tx);
       setGrid((current) =>
         current.map((cell, index) =>
@@ -228,8 +235,8 @@ export default function App() {
               <strong>{formatTon(selectedPixel.nextPriceNano)} TON</strong>
             </div>
             <div className="metric">
-              <span>Creator</span>
-              <strong>{formatTon(selectedPixel.nextPriceNano / 2n)} TON</strong>
+              <span>Attach</span>
+              <strong>{formatTon(attachedValueForPrice(selectedPixel.nextPriceNano))} TON</strong>
             </div>
             <div className="network-toggle" aria-label="Network">
               <button
@@ -272,26 +279,19 @@ export default function App() {
         <aside className="control-panel">
           <section className="panel-section">
             <div className="section-title">
-              <Grid3X3 size={18} />
-              <span>Board</span>
+              <Upload size={18} />
+              <span>Deploy my board</span>
             </div>
             <label>
-              Contract address
-              <input
-                value={boardAddress}
-                onChange={(event) => {
-                  setBoardAddress(event.target.value);
-                  localStorage.setItem('pixelBoardAddress', event.target.value);
-                }}
-                placeholder="EQ..."
-              />
+              My board address
+              <input value={myBoardAddress} readOnly placeholder="Deploy first" />
             </label>
             <label>
-              Payout wallet
+              My payout wallet
               <input
                 value={payoutWallet}
                 onChange={(event) => setPayoutWallet(event.target.value)}
-                placeholder={walletAddress || 'Owner wallet'}
+                placeholder={walletAddress || 'Connected wallet'}
               />
             </label>
             <button className="primary" onClick={deployBoard} type="button">
@@ -299,6 +299,35 @@ export default function App() {
               Deploy board
             </button>
             <div className="hint">Deploy value: {DEPLOY_VALUE_TON} TON</div>
+          </section>
+
+          <section className="panel-section">
+            <div className="section-title">
+              <Grid3X3 size={18} />
+              <span>Play on board</span>
+            </div>
+            <label>
+              Board to play on
+              <input
+                value={boardAddress}
+                onChange={(event) => {
+                  setBoardAddress(event.target.value);
+                  localStorage.setItem('playBoardAddress', event.target.value);
+                }}
+                placeholder="Paste any board address"
+              />
+            </label>
+            <button
+              className="ghost"
+              onClick={() => {
+                setBoardAddress(myBoardAddress);
+                localStorage.setItem('playBoardAddress', myBoardAddress);
+              }}
+              type="button"
+            >
+              Use my board
+            </button>
+            <div className="hint">Paste a friend's board here to buy cells there.</div>
           </section>
 
           <section className="panel-section">
@@ -346,6 +375,7 @@ export default function App() {
               <ImagePlus size={18} />
               Place image
             </button>
+            <div className="hint">Extra buffer: {GAS_BUFFER_TON} TON. Unused value is refunded.</div>
             <button className="ghost" onClick={clearLocalGrid} type="button">
               <Eraser size={18} />
               Clear local

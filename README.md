@@ -3,15 +3,18 @@
 Acton + React prototype for a TON image-board game.
 
 Players send a TON transfer with a standard text comment. The contract parses the
-comment, stores the image URL for a board cell, and sends half of the paid price
-to the creator payout wallet.
+comment, stores the image URL for a board cell, and sends the cell price to the
+creator payout wallet. The frontend attaches an extra gas buffer; the contract
+refunds unused value back to the player.
 
 ## Rules
 
 - Board size: `32x32`.
 - Empty cell price: `0.02 TON`.
 - Repurchasing the same cell costs `2x` the previous paid price.
-- Creator payout is always `50%` of the actual cell price.
+- The frontend sends the cell price plus a gas buffer.
+- The contract sends the cell price to the creator payout wallet and refunds
+  unused extra value to the player.
 - Accepted image URL kinds: `jpg`, `jpeg`, `png`, `webp`.
 - Transfer comment format:
 
@@ -53,3 +56,8 @@ Open `http://127.0.0.1:5173`.
 The frontend uses TON Connect directly. There is no backend: React creates the
 deploy `stateInit` and transfer comment payload locally, then the wallet signs
 and broadcasts the transaction.
+
+The UI has two separate flows:
+
+- Deploy your own board and choose the payout wallet.
+- Paste any existing board address and buy cells on that board.

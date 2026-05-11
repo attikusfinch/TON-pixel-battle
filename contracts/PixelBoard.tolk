@@ -91,7 +91,10 @@ fun handleImageComment(
         );
     storage.save();
 
-    sendOwnerShare(storage.payoutWallet, requiredPrice / 2);
+    sendOwnerShare(storage.payoutWallet, requiredPrice);
+    if (valueCoins > requiredPrice) {
+        refundRemaining(senderAddress);
+    }
 }
 
 fun parseImageComment(mutate body: slice): (uint16, uint16, uint8, string) {
@@ -173,7 +176,16 @@ fun sendCoins(to: address, amount: coins) {
         value: amount,
         dest: to,
     });
-    payout.send(SEND_MODE_PAY_FEES_SEPARATELY);
+    payout.send(SEND_MODE_REGULAR);
+}
+
+fun refundRemaining(to: address) {
+    val refund = createMessage({
+        bounce: false,
+        value: 0,
+        dest: to,
+    });
+    refund.send(SEND_MODE_CARRY_ALL_REMAINING_MESSAGE_VALUE | SEND_MODE_IGNORE_ERRORS);
 }
 
 get fun owner(): address {
