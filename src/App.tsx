@@ -48,8 +48,14 @@ function createEmptyGrid(): PixelCell[] {
   }));
 }
 
-function loadGrid(): PixelCell[] {
-  const raw = localStorage.getItem('imageBattleGrid');
+function gridStorageKey(network: Network, boardAddress: string): string {
+  const normalizedAddress = boardAddress.trim();
+  return normalizedAddress
+    ? `imageBattleGrid:${network}:${normalizedAddress}`
+    : `imageBattleGrid:${network}:draft`;
+}
+
+function parseStoredGrid(raw: string | null): PixelCell[] {
   if (!raw) {
     return createEmptyGrid();
   }
@@ -74,9 +80,13 @@ function loadGrid(): PixelCell[] {
   }
 }
 
-function saveGrid(grid: PixelCell[]) {
+function loadGrid(key: string): PixelCell[] {
+  return parseStoredGrid(localStorage.getItem(key));
+}
+
+function saveGrid(key: string, grid: PixelCell[]) {
   localStorage.setItem(
-    'imageBattleGrid',
+    key,
     JSON.stringify(
       grid.map((cell) => ({
         imageUrl: cell.imageUrl,
@@ -87,6 +97,11 @@ function saveGrid(grid: PixelCell[]) {
     ),
   );
 }
+
+type GridState = {
+  key: string;
+  cells: PixelCell[];
+};
 
 function gridFromSnapshot(snapshotPixels: Awaited<ReturnType<typeof fetchBoardSnapshot>>['pixels']) {
   const nextGrid = createEmptyGrid();
@@ -131,22 +146,63 @@ export default function App() {
   );
   const [imageUrl, setImageUrl] = useState('https://placehold.co/256x256/png');
   const [selectedCell, setSelectedCell] = useState({ x: 0, y: 0 });
-  const [grid, setGrid] = useState<PixelCell[]>(loadGrid);
+  const activeGridKey = useMemo(() => gridStorageKey(network, boardAddress), [boardAddress, network]);
+  const [gridState, setGridState] = useState<GridState>(() => ({
+    key: activeGridKey,
+    cells: loadGrid(activeGridKey),
+  }));
   const [priceTon, setPriceTon] = useState('0.02');
   const [status, setStatus] = useState('Ready');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [boardZoom, setBoardZoom] = useState(1);
 
+  const grid = gridState.cells;
   const selectedIndex = useMemo(() => cellIndex(selectedCell.x, selectedCell.y), [selectedCell]);
   const selectedPixel = grid[selectedIndex];
+  const nextBoardAddress = useMemo(() => {
+    if (!walletAddress) {
+      return '';
+    }
+    try {
+      const payout = payoutWallet.trim() || walletAddress;
+      return createBoardDeployment(walletAddress, payout, network, boardSeed).address;
+    } catch {
+      return '';
+    }
+  }, [boardSeed, network, payoutWallet, walletAddress]);
 
   useEffect(() => {
-    saveGrid(grid);
-  }, [grid]);
+    setGridState((current) =>
+      current.key === activeGridKey
+        ? current
+        : {
+            key: activeGridKey,
+            cells: loadGrid(activeGridKey),
+          },
+    );
+    setSelectedCell({ x: 0, y: 0 });
+  }, [activeGridKey]);
+
+  useEffect(() => {
+    saveGrid(gridState.key, gridState.cells);
+  }, [gridState]);
 
   useEffect(() => {
     localStorage.setItem('pixelBoardSeed', boardSeed);
   }, [boardSeed]);
+
+  function setGridForKey(
+    key: string,
+    nextGrid: PixelCell[] | ((current: PixelCell[]) => PixelCell[]),
+  ) {
+    setGridState((current) => {
+      const currentCells = current.key === key ? current.cells : loadGrid(key);
+      return {
+        key,
+        cells: typeof nextGrid === 'function' ? nextGrid(currentCells) : nextGrid,
+      };
+    });
+  }
 
   async function ensureWallet() {
     if (!walletAddress) {
@@ -167,6 +223,7 @@ export default function App() {
       localStorage.setItem('playBoardAddress', deployment.address);
       setMyBoardAddress(deployment.address);
       setBoardAddress(deployment.address);
+      setGridForKey(gridStorageKey(network, deployment.address), createEmptyGrid());
       setStatus(`Deploy sent: ${shortAddress(deployment.address)}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Deploy failed');
@@ -177,6 +234,7 @@ export default function App() {
     try {
       await ensureWallet();
       const normalizedUrl = normalizeImageUrl(imageUrl);
+      const targetGridKey = activeGridKey;
       const tx = createPlaceImageTransaction(
         boardAddress,
         selectedCell.x,
@@ -187,7 +245,7 @@ export default function App() {
       );
       setStatus(`Confirm ${formatTon(attachedValueForPrice(selectedPixel.nextPriceNano))} TON`);
       await tonConnectUI.sendTransaction(tx);
-      setGrid((current) =>
+      setGridForKey(targetGridKey, (current) =>
         current.map((cell, index) =>
           index === selectedIndex
             ? {
@@ -212,8 +270,9 @@ export default function App() {
       }
       setIsRefreshing(true);
       setStatus('Refreshing board');
+      const targetGridKey = gridStorageKey(network, boardAddress);
       const snapshot = await fetchBoardSnapshot(boardAddress, network);
-      setGrid(gridFromSnapshot(snapshot.pixels));
+      setGridForKey(targetGridKey, gridFromSnapshot(snapshot.pixels));
       setStatus(`Board refreshed: ${snapshot.placedCount} cells`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Refresh failed');
@@ -272,7 +331,7 @@ export default function App() {
   }
 
   function clearLocalGrid() {
-    setGrid(createEmptyGrid());
+    setGridForKey(activeGridKey, createEmptyGrid());
     setStatus('Local grid cleared');
   }
 
@@ -388,6 +447,10 @@ export default function App() {
                 value={boardSeed}
                 onChange={(event) => setBoardSeed(event.target.value)}
               />
+            </label>
+            <label>
+              Next board address
+              <input value={nextBoardAddress} readOnly placeholder="Connect wallet and set seed" />
             </label>
             <button className="ghost" onClick={randomizeBoardSeed} type="button">
               <RefreshCw size={18} />
