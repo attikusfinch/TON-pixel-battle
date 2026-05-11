@@ -1,5 +1,5 @@
 {
-  "url": "http://127.0.0.1:5173",
-  "name": "Pixel Battle",
-  "iconUrl": "http://127.0.0.1:5173/icon.svg"
+  "url": "https://github.com/attikusfinch/TON-pixel-battle",
+  "name": "TON Image Battle",
+  "iconUrl": "https://raw.githubusercontent.com/attikusfinch/TON-pixel-battle/master/public/icon.png"
 }

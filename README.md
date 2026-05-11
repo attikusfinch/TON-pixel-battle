@@ -57,6 +57,14 @@ The frontend uses TON Connect directly. There is no backend: React creates the
 deploy `stateInit` and transfer comment payload locally, then the wallet signs
 and broadcasts the transaction.
 
+TON Connect uses the manifest from the GitHub repo by default:
+`https://raw.githubusercontent.com/attikusfinch/TON-pixel-battle/master/public/tonconnect-manifest.json?v=1`.
+After manifest/icon changes, push `master` so wallets can fetch the latest
+HTTPS version. Override with `VITE_TONCONNECT_MANIFEST_URL` if you deploy the
+app to your own domain later.
+The icon is a 180x180 PNG because TON Connect wallets do not accept SVG icons
+in manifests.
+
 The UI has two separate flows:
 
 - Deploy your own board and choose the payout wallet.
