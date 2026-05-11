@@ -2,7 +2,6 @@ import type { CSSProperties, PointerEvent } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { TonConnectButton, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
 import {
-  BookmarkPlus,
   BookOpen,
   CircleDollarSign,
   Eraser,
@@ -15,6 +14,7 @@ import {
   Play,
   RefreshCw,
   RotateCcw,
+  Save,
   Settings2,
   Trash2,
   Upload,
@@ -233,7 +233,7 @@ export default function App() {
   const [network, setNetwork] = useState<Network>(
     () => (localStorage.getItem('pixelBattleNetwork') as Network | null) ?? 'testnet',
   );
-  const [myBoardAddress, setMyBoardAddress] = useState(
+  const [, setMyBoardAddress] = useState(
     () => localStorage.getItem('myPixelBoardAddress') ?? '',
   );
   const [boardAddress, setBoardAddress] = useState(() => localStorage.getItem('playBoardAddress') ?? '');
@@ -392,10 +392,14 @@ export default function App() {
     localStorage.setItem('playBoardAddress', normalizedAddress);
   }
 
-  function applyBoardAddress() {
-    setPlayBoard(boardAddressDraft);
+  async function applyBoardAddress() {
     const normalizedAddress = boardAddressDraft.trim();
-    setStatus(normalizedAddress ? `Board applied: ${shortAddress(normalizedAddress)}` : 'Board cleared');
+    setPlayBoard(normalizedAddress);
+    if (!normalizedAddress) {
+      setStatus('Board cleared');
+      return;
+    }
+    await refreshBoardFor(normalizedAddress, network);
   }
 
   function rememberBoard(address: string, boardNetwork = network, label?: string) {
@@ -491,15 +495,16 @@ export default function App() {
     }
   }
 
-  async function refreshBoard() {
+  async function refreshBoardFor(address: string, boardNetwork = network) {
     try {
-      if (!boardAddress.trim()) {
+      const normalizedAddress = address.trim();
+      if (!normalizedAddress) {
         throw new Error('Board address is empty');
       }
       setIsRefreshing(true);
       setStatus('Refreshing board');
-      const targetGridKey = gridStorageKey(network, boardAddress);
-      const snapshot = await fetchBoardSnapshot(boardAddress, network);
+      const targetGridKey = gridStorageKey(boardNetwork, normalizedAddress);
+      const snapshot = await fetchBoardSnapshot(normalizedAddress, boardNetwork);
       setGridForKey(targetGridKey, gridFromSnapshot(snapshot.pixels));
       setStatus(`Board refreshed: ${snapshot.placedCount} cells`);
     } catch (error) {
@@ -507,6 +512,15 @@ export default function App() {
     } finally {
       setIsRefreshing(false);
     }
+  }
+
+  async function refreshBoard() {
+    await refreshBoardFor(boardAddress, network);
+  }
+
+  async function openSavedBoard(board: SavedBoard) {
+    setPlayBoard(board.address, board.network);
+    await refreshBoardFor(board.address, board.network);
   }
 
   function zoomOut() {
@@ -573,9 +587,25 @@ export default function App() {
     }
   }
 
-  function clearLocalGrid() {
-    setGridForKey(activeGridKey, createEmptyGrid());
-    setStatus('Local grid cleared');
+  function clearAllLocalData() {
+    for (const key of Object.keys(localStorage)) {
+      if (
+        key === SAVED_BOARDS_KEY ||
+        key === 'playBoardAddress' ||
+        key === 'myPixelBoardAddress' ||
+        key.startsWith('imageBattleGrid:')
+      ) {
+        localStorage.removeItem(key);
+      }
+    }
+    const draftKey = gridStorageKey(network, '');
+    setSavedBoards([]);
+    setMyBoardAddress('');
+    setBoardAddress('');
+    setBoardAddressDraft('');
+    setGridForKey(draftKey, createEmptyGrid());
+    setSelectedCell({ x: 0, y: 0 });
+    setStatus('Local board data cleared');
   }
 
   function startBoardPan(event: PointerEvent<HTMLDivElement>) {
@@ -653,72 +683,78 @@ export default function App() {
           <div>
             <div className="eyebrow">TON contract game</div>
             <h1>Image Battle</h1>
-            <div className="creator-credit">by @fiscaldev on TON</div>
+            <div className="creator-credit">
+              by <a href="https://t.me/fiscaldev" rel="noreferrer" target="_blank">@fiscaldev</a> on TON and ACTON
+            </div>
           </div>
         </div>
         <nav className="mode-tabs" aria-label="Workspace">
-          <button
-            className={activeView === 'boards' ? 'active' : ''}
-            onClick={() => setActiveView('boards')}
-            type="button"
-          >
+          <button className={activeView === 'boards' ? 'active' : ''} onClick={() => setActiveView('boards')} type="button">
             <Layers3 size={17} />
             Boards
           </button>
-          <button
-            className={activeView === 'deploy' ? 'active' : ''}
-            onClick={() => setActiveView('deploy')}
-            type="button"
-          >
+          <button className={activeView === 'deploy' ? 'active' : ''} onClick={() => setActiveView('deploy')} type="button">
             <Upload size={17} />
             Deploy
           </button>
-          <button
-            className={activeView === 'place' ? 'active' : ''}
-            onClick={() => setActiveView('place')}
-            type="button"
-          >
+          <button className={activeView === 'place' ? 'active' : ''} onClick={() => setActiveView('place')} type="button">
             <ImagePlus size={17} />
             Image
           </button>
-          <button
-            className={activeView === 'manage' ? 'active' : ''}
-            onClick={() => setActiveView('manage')}
-            type="button"
-          >
+          <button className={activeView === 'manage' ? 'active' : ''} onClick={() => setActiveView('manage')} type="button">
             <Settings2 size={17} />
             Owner
           </button>
         </nav>
-        <button className="guide-button" onClick={() => setIsGuideOpen(true)} type="button">
-          <BookOpen size={17} />
-          Guide
-        </button>
-        <TonConnectButton />
+        <div className="header-actions">
+          <button className="guide-button" onClick={() => setIsGuideOpen(true)} type="button">
+            <BookOpen size={17} />
+            Guide
+          </button>
+          <TonConnectButton />
+        </div>
       </header>
 
-      <section className="app-intro">
+      <section className="view-heading">
         <div>
-          <p className="intro-kicker">On-chain image board</p>
-          <h2>Buy a square. Replace it for 2x. Make the board loud.</h2>
+          <p className="intro-kicker">
+            {activeView === 'boards'
+              ? 'Board viewer'
+              : activeView === 'deploy'
+                ? 'Board factory'
+                : activeView === 'place'
+                  ? 'Image transaction'
+                  : 'Owner controls'}
+          </p>
+          <h2>
+            {activeView === 'boards'
+              ? 'Apply a board. Watch it. Keep it local.'
+              : activeView === 'deploy'
+                ? 'Deploy another 32x32 board.'
+                : activeView === 'place'
+                  ? 'Send a picture into one cell.'
+                  : 'Tune the contract you own.'}
+          </h2>
         </div>
-        <div className="intro-stats">
+        <div className="view-stats">
           <div>
-            <span>Board</span>
-            <strong>32x32</strong>
-          </div>
-          <div>
-            <span>Base</span>
-            <strong>0.02 TON</strong>
+            <span>Network</span>
+            <strong>{network}</strong>
           </div>
           <div>
             <span>Placed</span>
             <strong>{placedCells}</strong>
           </div>
+          <div>
+            <span>Cell</span>
+            <strong>
+              {selectedCell.x},{selectedCell.y}
+            </strong>
+          </div>
         </div>
       </section>
 
-      <section className="workspace">
+      <section className={activeView === 'boards' ? 'workspace boards-workspace' : 'workspace form-workspace'}>
         <div className="board-area surface">
           <div className="board-toolbar">
             <div className="board-heading">
@@ -839,7 +875,7 @@ export default function App() {
                     onChange={(event) => setBoardAddressDraft(event.target.value)}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter') {
-                        applyBoardAddress();
+                        void applyBoardAddress();
                       }
                     }}
                     placeholder="Board address"
@@ -851,12 +887,12 @@ export default function App() {
               </div>
               <div className="button-row">
                 <button className="ghost" onClick={saveCurrentBoard} type="button">
-                  <BookmarkPlus size={17} />
+                  <Save size={17} />
                   Save
                 </button>
-                <button className="ghost" onClick={() => setPlayBoard(myBoardAddress)} type="button">
-                  <Grid3X3 size={17} />
-                  Mine
+                <button className="ghost danger" onClick={clearAllLocalData} type="button">
+                  <Eraser size={17} />
+                  Clear local
                 </button>
               </div>
               <div className="saved-list">
@@ -865,7 +901,7 @@ export default function App() {
                     <div className="saved-board" key={board.id}>
                       <button
                         className="saved-main"
-                        onClick={() => setPlayBoard(board.address, board.network)}
+                        onClick={() => void openSavedBoard(board)}
                         type="button"
                       >
                         <strong>{board.label}</strong>
@@ -887,10 +923,6 @@ export default function App() {
                   <div className="empty-state">No saved boards</div>
                 )}
               </div>
-              <button className="ghost" onClick={clearLocalGrid} type="button">
-                <Eraser size={17} />
-                Clear local
-              </button>
             </section>
           ) : null}
 
@@ -900,10 +932,6 @@ export default function App() {
                 <Upload size={18} />
                 <span>Deploy</span>
               </div>
-              <label>
-                My board address
-                <input value={myBoardAddress} readOnly placeholder="Deploy first" />
-              </label>
               <label>
                 Payout wallet
                 <input
@@ -1121,7 +1149,7 @@ export default function App() {
               <div>
                 <span>01</span>
                 <strong>Pick a board</strong>
-                <p>Open Boards, paste any board address, or use Mine after you deploy your own board.</p>
+                <p>Open Boards, paste a board address, press Apply, then Save it locally.</p>
               </div>
               <div>
                 <span>02</span>
