@@ -1,9 +1,33 @@
 import { Address, beginCell, Dictionary, storeStateInit, toNano } from '@ton/core';
+import { TonClient } from '@ton/ton';
 import { Buffer } from 'buffer';
 
 import { PixelBoard } from '../../wrappers-ts/PixelBoard.gen';
 
 export type Network = 'testnet' | 'mainnet';
+
+export type BoardPixel = {
+  index: number;
+  x: number;
+  y: number;
+  imageUrl: string;
+  imageKind: number;
+  painter: string;
+  updatedAt: number;
+  pricePaidNano: bigint;
+  nextPriceNano: bigint;
+};
+
+export type BoardSnapshot = {
+  owner: string;
+  payoutWallet: string;
+  width: number;
+  height: number;
+  basePriceNano: bigint;
+  isPaused: boolean;
+  placedCount: number;
+  pixels: BoardPixel[];
+};
 
 export type TonConnectTransaction = {
   validUntil: number;
@@ -20,6 +44,7 @@ export const BOARD_HEIGHT = 32;
 export const PIXEL_PRICE_TON = '0.02';
 export const GAS_BUFFER_TON = '0.03';
 export const DEPLOY_VALUE_TON = '0.5';
+export const MAX_BOARD_SEED = 4_294_967_295;
 
 const TX_TTL_SECONDS = 300;
 const DEFAULT_WIDTH = BigInt(BOARD_WIDTH);
@@ -66,16 +91,38 @@ function parseAddress(value: string, fieldName: string): Address {
   }
 }
 
+function parseBoardSeed(seedValue: string): bigint {
+  const trimmed = seedValue.trim();
+  if (!/^\d+$/.test(trimmed)) {
+    throw new Error('Board seed must be a non-negative integer');
+  }
+  const seed = BigInt(trimmed);
+  if (seed > BigInt(MAX_BOARD_SEED)) {
+    throw new Error(`Board seed must be <= ${MAX_BOARD_SEED}`);
+  }
+  return seed;
+}
+
+export function createRandomBoardSeed(): string {
+  if (globalThis.crypto?.getRandomValues) {
+    return globalThis.crypto.getRandomValues(new Uint32Array(1))[0].toString();
+  }
+  return (Date.now() >>> 0).toString();
+}
+
 export function createBoardDeployment(
   ownerAddress: string,
   payoutWalletAddress: string,
   network: Network,
+  seedValue: string,
 ) {
   const owner = parseAddress(ownerAddress, 'Owner wallet');
   const payoutWallet = parseAddress(payoutWalletAddress, 'Payout wallet');
+  const seed = parseBoardSeed(seedValue);
   const board = PixelBoard.fromStorage({
     owner,
     payoutWallet,
+    seed,
     width: DEFAULT_WIDTH,
     height: DEFAULT_HEIGHT,
     price: PIXEL_PRICE,
@@ -121,6 +168,64 @@ export function normalizeImageUrl(imageUrl: string): string {
     throw new Error('Image URL is too long');
   }
   return url.href;
+}
+
+function toncenterEndpoint(network: Network): string {
+  return network === 'testnet'
+    ? 'https://testnet.toncenter.com/api/v2/jsonRPC'
+    : 'https://toncenter.com/api/v2/jsonRPC';
+}
+
+function toncenterApiKey(network: Network): string | undefined {
+  return network === 'testnet'
+    ? import.meta.env.VITE_TONCENTER_TESTNET_API_KEY
+    : import.meta.env.VITE_TONCENTER_MAINNET_API_KEY;
+}
+
+export async function fetchBoardSnapshot(boardAddress: string, network: Network): Promise<BoardSnapshot> {
+  const address = parseAddress(boardAddress, 'Board address');
+  const client = new TonClient({
+    endpoint: toncenterEndpoint(network),
+    apiKey: toncenterApiKey(network),
+    timeout: 10000,
+  });
+  const board = client.open(PixelBoard.fromAddress(address));
+  const [owner, payoutWallet, width, height, basePrice, isPaused, placedCount] =
+    await board.getConfig();
+  const pixels = await board.getPixels();
+  const widthNumber = Number(width);
+
+  return {
+    owner: formatAddress(owner, network),
+    payoutWallet: formatAddress(payoutWallet, network),
+    width: widthNumber,
+    height: Number(height),
+    basePriceNano: basePrice,
+    isPaused,
+    placedCount: Number(placedCount),
+    pixels: pixels
+      .keys()
+      .map((key) => {
+        const pixel = pixels.get(key);
+        if (!pixel) {
+          return null;
+        }
+        const index = Number(key);
+        return {
+          index,
+          x: index % widthNumber,
+          y: Math.floor(index / widthNumber),
+          imageUrl: pixel.imageUrl,
+          imageKind: Number(pixel.imageKind),
+          painter: formatAddress(pixel.painter, network),
+          updatedAt: Number(pixel.updatedAt),
+          pricePaidNano: pixel.pricePaid,
+          nextPriceNano: pixel.pricePaid * 2n,
+        };
+      })
+      .filter((pixel): pixel is BoardPixel => pixel !== null)
+      .sort((a, b) => a.index - b.index),
+  };
 }
 
 function imageKindFromUrl(imageUrl: string): 'jpg' | 'png' | 'webp' {

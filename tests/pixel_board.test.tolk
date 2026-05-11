@@ -19,11 +19,22 @@ get fun `test deploy exposes configured board`() {
     ) = board.config();
     expect(ownerAddress).toEqual(owner.address);
     expect(payoutAddress).toEqual(payout.address);
+    expect(board.seed()).toEqual(1);
     expect(width).toEqual(DEFAULT_BOARD_WIDTH);
     expect(height).toEqual(DEFAULT_BOARD_HEIGHT);
     expect(price).toEqual(DEFAULT_PIXEL_PRICE);
     expect(isPaused).toEqual(false);
     expect(placedCount).toEqual(0);
+}
+
+get fun `test seed changes deployed board address`() {
+    val owner = testing.treasury("ownerSeed");
+    val payout = testing.treasury("payoutSeed");
+
+    val first = createBoard(owner.address, payout.address, 1);
+    val second = createBoard(owner.address, payout.address, 2);
+
+    expect(first.address).toNotEqual(second.address);
 }
 
 get fun `test player places image comment and owner wallet receives payout`() {
@@ -71,6 +82,23 @@ get fun `test player places image comment and owner wallet receives payout`() {
         placedCount,
     ) = board.config();
     expect(placedCount).toEqual(1);
+}
+
+get fun `test pixels getter returns occupied cells`() {
+    val (board, _, _, alice) = setupTest();
+
+    val res = board.sendAny(
+        alice.address,
+        rawComment("pb:0102:png:https://img.test/cell.png"),
+        { value: ton("0.02") },
+    );
+    expect(res).toHaveAllSuccessfulTxs();
+
+    val pixels = board.pixels();
+    expect(pixels).toHaveLength(1);
+    val pixel = pixels.mustGet(2 * DEFAULT_BOARD_WIDTH + 1);
+    expect(pixel.imageUrl).toEqual("https://img.test/cell.png");
+    expect(pixel.pricePaid).toEqual(ton("0.02"));
 }
 
 get fun `test repurchase requires double price`() {
@@ -317,9 +345,20 @@ fun setupTest(): (PixelBoard, Treasury, Treasury, Treasury) {
     val payout = testing.treasury("payout");
     val alice = testing.treasury("alice");
 
-    val board = PixelBoard.fromStorage(PixelBoardStorage {
-        owner: owner.address,
-        payoutWallet: payout.address,
+    val board = createBoard(owner.address, payout.address, 1);
+    val res = board.deploy(owner.address, { value: ton("0.5") });
+    expect(res).toHaveSuccessfulDeploy({
+        to: board.address,
+    });
+
+    return (board, owner, payout, alice);
+}
+
+fun createBoard(owner: address, payout: address, seed: uint32): PixelBoard {
+    return PixelBoard.fromStorage(PixelBoardStorage {
+        owner,
+        payoutWallet: payout,
+        seed,
         width: DEFAULT_BOARD_WIDTH,
         height: DEFAULT_BOARD_HEIGHT,
         price: DEFAULT_PIXEL_PRICE,
@@ -327,12 +366,6 @@ fun setupTest(): (PixelBoard, Treasury, Treasury, Treasury) {
         placedCount: 0,
         pixels: [],
     });
-    val res = board.deploy(owner.address, { value: ton("0.5") });
-    expect(res).toHaveSuccessfulDeploy({
-        to: board.address,
-    });
-
-    return (board, owner, payout, alice);
 }
 
 fun rawComment(comment: string): cell {

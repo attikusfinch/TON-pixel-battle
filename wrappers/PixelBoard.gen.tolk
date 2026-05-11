@@ -125,6 +125,10 @@ fun PixelBoard.payoutWallet(self): address {
     return net.runGetMethod(self.address, "payoutWallet");
 }
 
+fun PixelBoard.seed(self): uint32 {
+    return net.runGetMethod(self.address, "seed");
+}
+
 fun PixelBoard.config(self): (
     address,
     address,
@@ -135,6 +139,10 @@ fun PixelBoard.config(self): (
     uint32,
 ) {
     return net.runGetMethod(self.address, "config");
+}
+
+fun PixelBoard.pixels(self): map<uint32, Pixel> {
+    return net.runGetMethod(self.address, "pixels");
 }
 
 fun PixelBoard.pixel(self, x: uint16, y: uint16): (

@@ -10,11 +10,15 @@ refunds unused value back to the player.
 ## Rules
 
 - Board size: `32x32`.
+- Deploy seed is stored in contract data so one wallet can deploy multiple
+  independent boards by changing the seed.
 - Empty cell price: `0.02 TON`.
 - Repurchasing the same cell costs `2x` the previous paid price.
 - The frontend sends the cell price plus a gas buffer.
 - The contract sends the cell price to the creator payout wallet and refunds
   unused extra value to the player.
+- The contract exposes a `pixels` get method that returns occupied cells as
+  `map<uint32, Pixel>`.
 - Accepted image URL kinds: `jpg`, `jpeg`, `png`, `webp`.
 - Transfer comment format:
 
@@ -68,4 +72,11 @@ in manifests.
 The UI has two separate flows:
 
 - Deploy your own board and choose the payout wallet.
+- Change or randomize the board seed before deploy to create another board from
+  the same wallet.
 - Paste any existing board address and buy cells on that board.
+
+The board refresh button reads the `pixels` get method, so it works with boards
+deployed from the current contract code. Older deployed boards need redeploying
+or a transaction-history fallback because contract code cannot be upgraded in
+place.

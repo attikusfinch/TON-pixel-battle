@@ -198,6 +198,11 @@ get fun payoutWallet(): address {
     return storage.payoutWallet;
 }
 
+get fun seed(): uint32 {
+    val storage = lazy PixelBoardStorage.load();
+    return storage.seed;
+}
+
 get fun config(): (
     address,
     address,
@@ -217,6 +222,11 @@ get fun config(): (
         storage.isPaused,
         storage.placedCount,
     );
+}
+
+get fun pixels(): map<uint32, Pixel> {
+    val storage = lazy PixelBoardStorage.load();
+    return storage.pixels;
 }
 
 get fun pixel(x: uint16, y: uint16): (

@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { TonConnectButton, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
 import {
@@ -7,7 +8,10 @@ import {
   ImagePlus,
   Pause,
   Play,
+  RefreshCw,
   Upload,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 
 import {
@@ -19,10 +23,12 @@ import {
   type Network,
   attachedValueForPrice,
   createBoardDeployment,
+  createRandomBoardSeed,
   createPlaceImageTransaction,
   createSetPausedTransaction,
   createSetPayoutWalletTransaction,
   createSetPriceTransaction,
+  fetchBoardSnapshot,
   normalizeImageUrl,
 } from './lib/pixelBoard';
 
@@ -82,6 +88,21 @@ function saveGrid(grid: PixelCell[]) {
   );
 }
 
+function gridFromSnapshot(snapshotPixels: Awaited<ReturnType<typeof fetchBoardSnapshot>>['pixels']) {
+  const nextGrid = createEmptyGrid();
+  for (const pixel of snapshotPixels) {
+    if (pixel.index >= 0 && pixel.index < nextGrid.length) {
+      nextGrid[pixel.index] = {
+        imageUrl: pixel.imageUrl,
+        pricePaidNano: pixel.pricePaidNano,
+        nextPriceNano: pixel.nextPriceNano,
+        pending: false,
+      };
+    }
+  }
+  return nextGrid;
+}
+
 function cellIndex(x: number, y: number): number {
   return y * BOARD_WIDTH + x;
 }
@@ -105,11 +126,16 @@ export default function App() {
   );
   const [boardAddress, setBoardAddress] = useState(() => localStorage.getItem('playBoardAddress') ?? '');
   const [payoutWallet, setPayoutWallet] = useState('');
+  const [boardSeed, setBoardSeed] = useState(
+    () => localStorage.getItem('pixelBoardSeed') ?? createRandomBoardSeed(),
+  );
   const [imageUrl, setImageUrl] = useState('https://placehold.co/256x256/png');
   const [selectedCell, setSelectedCell] = useState({ x: 0, y: 0 });
   const [grid, setGrid] = useState<PixelCell[]>(loadGrid);
   const [priceTon, setPriceTon] = useState('0.02');
   const [status, setStatus] = useState('Ready');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [boardZoom, setBoardZoom] = useState(1);
 
   const selectedIndex = useMemo(() => cellIndex(selectedCell.x, selectedCell.y), [selectedCell]);
   const selectedPixel = grid[selectedIndex];
@@ -117,6 +143,10 @@ export default function App() {
   useEffect(() => {
     saveGrid(grid);
   }, [grid]);
+
+  useEffect(() => {
+    localStorage.setItem('pixelBoardSeed', boardSeed);
+  }, [boardSeed]);
 
   async function ensureWallet() {
     if (!walletAddress) {
@@ -130,7 +160,7 @@ export default function App() {
     try {
       const owner = await ensureWallet();
       const payout = payoutWallet.trim() || owner;
-      const deployment = createBoardDeployment(owner, payout, network);
+      const deployment = createBoardDeployment(owner, payout, network, boardSeed);
       setStatus('Confirm deploy in wallet');
       await tonConnectUI.sendTransaction(deployment.transaction);
       localStorage.setItem('myPixelBoardAddress', deployment.address);
@@ -173,6 +203,35 @@ export default function App() {
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Transaction failed');
     }
+  }
+
+  async function refreshBoard() {
+    try {
+      if (!boardAddress.trim()) {
+        throw new Error('Board address is empty');
+      }
+      setIsRefreshing(true);
+      setStatus('Refreshing board');
+      const snapshot = await fetchBoardSnapshot(boardAddress, network);
+      setGrid(gridFromSnapshot(snapshot.pixels));
+      setStatus(`Board refreshed: ${snapshot.placedCount} cells`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Refresh failed');
+    } finally {
+      setIsRefreshing(false);
+    }
+  }
+
+  function zoomOut() {
+    setBoardZoom((current) => Math.max(0.75, Number((current - 0.25).toFixed(2))));
+  }
+
+  function zoomIn() {
+    setBoardZoom((current) => Math.min(3, Number((current + 0.25).toFixed(2))));
+  }
+
+  function randomizeBoardSeed() {
+    setBoardSeed(createRandomBoardSeed());
   }
 
   async function setPaused(isPaused: boolean) {
@@ -238,6 +297,25 @@ export default function App() {
               <span>Attach</span>
               <strong>{formatTon(attachedValueForPrice(selectedPixel.nextPriceNano))} TON</strong>
             </div>
+            <div className="tool-group" aria-label="Board tools">
+              <button
+                className="tool-button"
+                disabled={isRefreshing}
+                onClick={refreshBoard}
+                title="Refresh board"
+                type="button"
+              >
+                <RefreshCw size={17} />
+                <span>{isRefreshing ? 'Refreshing' : 'Refresh'}</span>
+              </button>
+              <button className="tool-button square" onClick={zoomOut} title="Zoom out" type="button">
+                <ZoomOut size={17} />
+              </button>
+              <span className="zoom-value">{Math.round(boardZoom * 100)}%</span>
+              <button className="tool-button square" onClick={zoomIn} title="Zoom in" type="button">
+                <ZoomIn size={17} />
+              </button>
+            </div>
             <div className="network-toggle" aria-label="Network">
               <button
                 className={network === 'testnet' ? 'active' : ''}
@@ -256,23 +334,30 @@ export default function App() {
             </div>
           </div>
 
-          <div className="pixel-board" role="grid" aria-label="Image board">
-            {grid.map((cell, index) => {
-              const x = index % BOARD_WIDTH;
-              const y = Math.floor(index / BOARD_WIDTH);
-              const selected = selectedCell.x === x && selectedCell.y === y;
-              return (
-                <button
-                  key={`${x}-${y}`}
-                  className={`pixel ${selected ? 'selected' : ''} ${cell.pending ? 'pending' : ''}`}
-                  onClick={() => setSelectedCell({ x, y })}
-                  type="button"
-                  aria-label={`Cell ${x}, ${y}`}
-                >
-                  {cell.imageUrl ? <img src={cell.imageUrl} alt="" loading="lazy" /> : null}
-                </button>
-              );
-            })}
+          <div className="board-scroll">
+            <div
+              className="pixel-board"
+              role="grid"
+              aria-label="Image board"
+              style={{ '--board-size': `${Math.round(640 * boardZoom)}px` } as CSSProperties}
+            >
+              {grid.map((cell, index) => {
+                const x = index % BOARD_WIDTH;
+                const y = Math.floor(index / BOARD_WIDTH);
+                const selected = selectedCell.x === x && selectedCell.y === y;
+                return (
+                  <button
+                    key={`${x}-${y}`}
+                    className={`pixel ${selected ? 'selected' : ''} ${cell.pending ? 'pending' : ''}`}
+                    onClick={() => setSelectedCell({ x, y })}
+                    type="button"
+                    aria-label={`Cell ${x}, ${y}`}
+                  >
+                    {cell.imageUrl ? <img src={cell.imageUrl} alt="" loading="lazy" /> : null}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
@@ -294,11 +379,27 @@ export default function App() {
                 placeholder={walletAddress || 'Connected wallet'}
               />
             </label>
+            <label>
+              Board seed
+              <input
+                min={0}
+                max={4294967295}
+                type="number"
+                value={boardSeed}
+                onChange={(event) => setBoardSeed(event.target.value)}
+              />
+            </label>
+            <button className="ghost" onClick={randomizeBoardSeed} type="button">
+              <RefreshCw size={18} />
+              Random seed
+            </button>
             <button className="primary" onClick={deployBoard} type="button">
               <Upload size={18} />
               Deploy board
             </button>
-            <div className="hint">Deploy value: {DEPLOY_VALUE_TON} TON</div>
+            <div className="hint">
+              Deploy value: {DEPLOY_VALUE_TON} TON. Change seed to deploy another board.
+            </div>
           </section>
 
           <section className="panel-section">

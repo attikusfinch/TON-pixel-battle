@@ -11,6 +11,7 @@ fun main() {
     val board = PixelBoard.fromStorage(PixelBoardStorage {
         owner: deployer.address,
         payoutWallet: deployer.address,
+        seed: 1,
         width: DEFAULT_BOARD_WIDTH,
         height: DEFAULT_BOARD_HEIGHT,
         price: DEFAULT_PIXEL_PRICE,
@@ -25,5 +26,6 @@ fun main() {
 
     println("Deployed PixelBoard to {}", board.address);
     println("Owner and payout wallet: {}", deployer.address);
+    println("Seed: {}", 1);
     println("Pixel price: {:ton}", DEFAULT_PIXEL_PRICE);
 }

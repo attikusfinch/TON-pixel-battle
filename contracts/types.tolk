@@ -38,6 +38,7 @@ struct Pixel {
 struct PixelBoardStorage {
     owner: address
     payoutWallet: address
+    seed: uint32
     width: uint16
     height: uint16
     price: coins

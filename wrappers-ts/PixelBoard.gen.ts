@@ -124,6 +124,14 @@ class StackReader {
     readSnakeString(): string {
         return this.readCell().beginParse().loadStringTail();
     }
+
+    readDictionary<K extends c.DictionaryKeyTypes, V>(keySerializer: c.DictionaryKey<K>, valueSerializer: c.DictionaryValue<V>): c.Dictionary<K, V> {
+        if (this.tuple[0].type === 'null') {
+            this.tuple.shift();
+            return c.Dictionary.empty<K, V>(keySerializer, valueSerializer);
+        }
+        return c.Dictionary.loadDirect<K, V>(keySerializer, valueSerializer, this.readCell());
+    }
 }
 
 // ————————————————————————————————————————————
@@ -193,6 +201,7 @@ export const Pixel = {
  > struct PixelBoardStorage {
  >     owner: address
  >     payoutWallet: address
+ >     seed: uint32
  >     width: uint16
  >     height: uint16
  >     price: coins
@@ -205,6 +214,7 @@ export interface PixelBoardStorage {
     readonly $: 'PixelBoardStorage'
     owner: c.Address
     payoutWallet: c.Address
+    seed: uint32
     width: uint16
     height: uint16
     price: coins
@@ -217,6 +227,7 @@ export const PixelBoardStorage = {
     create(args: {
         owner: c.Address
         payoutWallet: c.Address
+        seed: uint32
         width: uint16
         height: uint16
         price: coins
@@ -234,6 +245,7 @@ export const PixelBoardStorage = {
             $: 'PixelBoardStorage',
             owner: s.loadAddress(),
             payoutWallet: s.loadAddress(),
+            seed: s.loadUintBig(32),
             width: s.loadUintBig(16),
             height: s.loadUintBig(16),
             price: s.loadCoins(),
@@ -245,6 +257,7 @@ export const PixelBoardStorage = {
     store(self: PixelBoardStorage, b: c.Builder): void {
         b.storeAddress(self.owner);
         b.storeAddress(self.payoutWallet);
+        b.storeUint(self.seed, 32);
         b.storeUint(self.width, 16);
         b.storeUint(self.height, 16);
         b.storeCoins(self.price);
@@ -449,7 +462,7 @@ function calculateDeployedAddress(code: c.Cell, data: c.Cell, options: DeployedA
 }
 
 export class PixelBoard implements c.Contract {
-    static CodeCell = c.Cell.fromBase64('te6ccgECFgEAA3YAART/APSkE/S88sgLAQIBYgIDAgLOBAUCASAPEATZT4kZEw4FMA10nCH5gg1wsfwADDAJFw4uMCMCDXLCODk0scji4x7UTQ+kj6SNYf+gAx+JIkxwXy4GgE+gAwIMIA8uBpA8j6UhL6Us4B+gLOye1U4NcsI4MLq5zjAtcsI4MLy7zjAtcsI7tLo0SAYHCAkCASANDgL8MfiS+Jf4lQPTHzEg10nCX/LgZdMHAcBw8uBl0wcBwGLy4GXTBwHAOvLgZdMH0wcC8AKqAwHwAqAB0wfTBwLwAqoDAfACoAHTBwHAOvLgZfADAdMHAcA68uBlIMjOMckg2zwgwgCWgQDwu8MAkjBw4vLgZe1E0PpI+kjTD9MPCgsAWDHtRND6SPpI1h/6ANIAMfiSJccF8uBoBdcKAATI+lIT+lLOAfoCygDOye1UAD4x7UTQ+kj6SDH4kiLHBfLgaAL6SDAByPpS+lLOye1UAGqOKjHtRND6SDD4kscF8uBo+gD6SDAhwgDy4GrIz4UI+lIB+gJwzwtqyXD7AOAwhA8BxwDy9AAscAHQINdkmSDXSRKgAddM0OTXSaCrAgH8+gDSANMf9AUi8tBnU7W5lVOkucMAkXDi8uBkUaWoUAugUwmAIPQOb6EgjhEB1DHTBzH6SDHTHzH6ANGqAJIxI+JT0L7y4GYBkwukC98IyMwZywdSwPpSHcsfJvoCQHiAIPRDA8j6UlIg+lLLDxXLD1AD+gIXygATyx8S9ADJDABQ7VTIz4UI+lIj+gJwzwtqyXD7AFi8n8jPhQj6UnDPC27JgEL7AJEw4gBNCDCL5UgwTrDAJFw4pKm0OAgwmCVIMFnwwCRcOKUpp+mCuAw8sBlgAKs0wchwGqOEjHTBwHAcPLgZdMHAcBn8uBlceAhwHCOEjHTBwHAbvLgZdMHAcBn8uBlcuABwHeOGdMHAcBl8uBl0wcBwGLy4GXTBwHAcPLgZXPgMPLAZYAARvijvaiaH0kGEAgFIERICAVgTFAAXtZh9qJofSQY/SQYQACmtNvaiaH0kfSRph+mH/QBpAGuFj8ABra+/9qJofSR9JBjph+mH/QBpkBj6Aqmx3MqpKdzhgEkZOHF5cDIoIVQoAlAsQBB6BzfQxwq2EOppg/0kaY/9AGi/kNUACwqKIZhwGDhEOCmACCMIGqCCQBUAAA==');
+    static CodeCell = c.Cell.fromBase64('te6ccgECGgEAA7IAART/APSkE/S88sgLAQIBYgIDAgLOBAUCASAPEATZT4kZEw4FMA10nCH5gg1wsfwADDAJFw4uMCMCDXLCODk0scji4x7UTQ+kj6SNY/+gAx+JIkxwXy4GgE+gAwIMIA8uBpA8j6UhL6Us4B+gLOye1U4NcsI4MLq5zjAtcsI4MLy7zjAtcsI7tLo0SAYHCAkCASANDgL8MfiS+Jf4lQPTHzEg10nCX/LgZdMHAcBw8uBl0wcBwGLy4GXTBwHAOvLgZdMH0wcC8AKqAwHwAqAB0wfTBwLwAqoDAfACoAHTBwHAOvLgZfADAdMHAcA68uBlIMjOMckg2zwgwgCWgQDwu8MAkjBw4vLgZe1E0PpI+kjWH9MPCgsAWDHtRND6SPpI1j/6ANIAMfiSJccF8uBoBdcKAATI+lIT+lLOAfoCygDOye1UAD4x7UTQ+kj6SDH4kiLHBfLgaAL6SDAByPpS+lLOye1UAGqOKjHtRND6SDD4kscF8uBo+gD6SDAhwgDy4GrIz4UI+lIB+gJwzwtqyXD7AOAwhA8BxwDy9AAscAHQINdkmSDXSRKgAddM0OTXSaCrAgH+0w/6ANIA0x/0BSLy0GdTxbmVU7S5wwCRcOLy4GRRtahQDKBTCoAg9A5voSCOEQHUMdMHMfpIMdMfMfoA0aoAkjEj4lPgvvLgZgGTDKQM3wnIzBrLB1LQ+lIeyx8n+gJAiYAg9EMEyPpSUjD6UhLOyw8Vyw9QA/oCF8oAE8sfEgwAVvQAye1UyM+FCPpSI/oCcM8Laslw+wBYvJ/Iz4UI+lJwzwtuyYBC+wCRMOIATQgwi+VIME6wwCRcOKSptDgIMJglSDBZ8MAkXDilKafpgrgMPLAZYACrNMHIcBqjhIx0wcBwHDy4GXTBwHAZ/LgZXHgIcBwjhIx0wcBwG7y4GXTBwHAZ/LgZXLgAcB3jhnTBwHAZfLgZdMHAcBi8uBl0wcBwHDy4GVz4DDywGWACAVgREgIBSBUWAgFiExQAHbY5/aiaH0kGP0kGOuFj8AAsq6LtRND6SDH6SDHTPzH6ADHTIDH0BQAQqR3tRND6SDACAVgXGAAXtZh9qJofSQY/SQYQAC+tNvaiaH0kfSRpj5jph+mH/QBpAGuFj8ABs6+/9qJofSR9JBjpj5jph+mH/QBpkBj6Aqmx3MqpKdzhgEkZOHF5cDIoIVQoAlAsQBB6BzfQxwq2EOppg/0kaY/9AGi/kNUACwqKIZhwGDhEOCmACCMIGqCCQBkAAA==');
 
     static Errors = {
         'Errors.OutOfBounds': 100,
@@ -477,6 +490,7 @@ export class PixelBoard implements c.Contract {
     static fromStorage(emptyStorage: {
         owner: c.Address
         payoutWallet: c.Address
+        seed: uint32
         width: uint16
         height: uint16
         price: coins
@@ -576,6 +590,11 @@ export class PixelBoard implements c.Contract {
         return r.readSlice().loadAddress();
     }
 
+    async getSeed(provider: ContractProvider): Promise<uint32> {
+        const r = StackReader.fromGetMethod(1, await provider.get('seed', []));
+        return r.readBigInt();
+    }
+
     async getConfig(provider: ContractProvider): Promise<[
         c.Address,
         c.Address,
@@ -595,6 +614,11 @@ export class PixelBoard implements c.Contract {
             r.readBoolean(),
             r.readBigInt(),
         ];
+    }
+
+    async getPixels(provider: ContractProvider): Promise<c.Dictionary<uint32, Pixel>> {
+        const r = StackReader.fromGetMethod(1, await provider.get('pixels', []));
+        return r.readDictionary<uint32, Pixel>(c.Dictionary.Keys.BigUint(32), createDictionaryValue<Pixel>(Pixel.fromSlice, Pixel.store));
     }
 
     async getPixel(provider: ContractProvider, x: uint16, y: uint16): Promise<[

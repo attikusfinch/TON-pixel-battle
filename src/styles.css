@@ -73,6 +73,7 @@ h1 {
   gap: 12px;
   justify-content: space-between;
   margin-bottom: 14px;
+  flex-wrap: wrap;
 }
 
 .metric {
@@ -105,6 +106,46 @@ h1 {
   overflow: hidden;
 }
 
+.tool-group {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.tool-button {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #d7dde5;
+  border-radius: 8px;
+  color: #26323f;
+  cursor: pointer;
+  display: inline-flex;
+  font-weight: 800;
+  gap: 7px;
+  min-height: 40px;
+  padding: 0 11px;
+}
+
+.tool-button.square {
+  aspect-ratio: 1;
+  justify-content: center;
+  padding: 0;
+  width: 40px;
+}
+
+.tool-button:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.zoom-value {
+  color: #475467;
+  font-size: 13px;
+  font-weight: 800;
+  min-width: 44px;
+  text-align: center;
+}
+
 .network-toggle button {
   background: transparent;
   color: #475467;
@@ -118,21 +159,27 @@ h1 {
   color: #ffffff;
 }
 
+.board-scroll {
+  max-height: calc(100vh - 150px);
+  max-width: 100%;
+  overflow: auto;
+}
+
 .pixel-board {
-  aspect-ratio: 1;
   background: #cfd6df;
   border: 1px solid #bdc7d2;
   display: grid;
   gap: 1px;
   grid-template-columns: repeat(32, minmax(0, 1fr));
-  max-height: calc(100vh - 150px);
-  max-width: min(100%, calc(100vh - 150px));
-  min-height: 360px;
+  grid-template-rows: repeat(32, minmax(0, 1fr));
+  height: var(--board-size);
   overflow: hidden;
+  width: var(--board-size);
 }
 
 .pixel {
   align-items: stretch;
+  aspect-ratio: 1 / 1;
   background: #ffffff;
   border-radius: 0;
   cursor: pointer;
@@ -145,6 +192,8 @@ h1 {
 }
 
 .pixel img {
+  aspect-ratio: 1 / 1;
+  display: block;
   height: 100%;
   object-fit: cover;
   width: 100%;
@@ -282,14 +331,17 @@ input:focus {
     grid-template-columns: 1fr 1fr;
   }
 
-  .network-toggle {
+  .network-toggle,
+  .tool-group {
     grid-column: 1 / -1;
     margin-left: 0;
   }
 
-  .pixel-board {
+  .tool-group {
+    justify-content: space-between;
+  }
+
+  .board-scroll {
     max-height: none;
-    max-width: 100%;
-    min-height: auto;
   }
 }
