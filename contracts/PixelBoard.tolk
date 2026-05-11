@@ -93,7 +93,7 @@ fun handleImageComment(
 
     sendOwnerShare(storage.payoutWallet, requiredPrice);
     if (valueCoins > requiredPrice) {
-        refundRemaining(senderAddress);
+        refundCoins(senderAddress, (valueCoins - requiredPrice) as coins);
     }
 }
 
@@ -179,13 +179,14 @@ fun sendCoins(to: address, amount: coins) {
     payout.send(SEND_MODE_REGULAR);
 }
 
-fun refundRemaining(to: address) {
+fun refundCoins(to: address, amount: coins) {
+    // Do not use carry-all here: payout is a separate action, so carry-all can over-refund.
     val refund = createMessage({
         bounce: false,
-        value: 0,
+        value: amount,
         dest: to,
     });
-    refund.send(SEND_MODE_CARRY_ALL_REMAINING_MESSAGE_VALUE | SEND_MODE_IGNORE_ERRORS);
+    refund.send(SEND_MODE_REGULAR | SEND_MODE_IGNORE_ERRORS);
 }
 
 get fun owner(): address {

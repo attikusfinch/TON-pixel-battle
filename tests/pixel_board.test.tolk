@@ -224,6 +224,9 @@ get fun `test overpay buffer is refunded to player`() {
     expect(res).toHaveSuccessfulTx({
         from: board.address,
         to: alice.address,
+        value: fun(value: coins): bool {
+            return value > ton("0.02") && value < ton("0.04");
+        },
     });
 
     val (
