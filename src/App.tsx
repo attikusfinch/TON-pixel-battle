@@ -81,6 +81,7 @@ const BOARD_BASE_SIZE = 640;
 const MIN_BOARD_ZOOM = 0.5;
 const MAX_BOARD_ZOOM = 4;
 const BOARD_ZOOM_STEP = 0.25;
+const BOARD_DRAG_THRESHOLD = 8;
 
 function createEmptyGrid(basePriceNano = BASE_PIXEL_PRICE_NANO): PixelCell[] {
   return Array.from({ length: BOARD_WIDTH * BOARD_HEIGHT }, () => ({
@@ -635,8 +636,6 @@ export default function App() {
       startX: event.clientX,
       startY: event.clientY,
     };
-    setIsPanningBoard(true);
-    event.currentTarget.setPointerCapture(event.pointerId);
   }
 
   function moveBoardPan(event: PointerEvent<HTMLDivElement>) {
@@ -647,10 +646,15 @@ export default function App() {
     }
     const deltaX = event.clientX - drag.startX;
     const deltaY = event.clientY - drag.startY;
-    if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) {
-      drag.moved = true;
-      event.preventDefault();
+    if (!drag.moved && Math.hypot(deltaX, deltaY) < BOARD_DRAG_THRESHOLD) {
+      return;
     }
+    if (!drag.moved) {
+      drag.moved = true;
+      setIsPanningBoard(true);
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    event.preventDefault();
     scroller.scrollLeft = drag.scrollLeft - deltaX;
     scroller.scrollTop = drag.scrollTop - deltaY;
   }
@@ -660,11 +664,17 @@ export default function App() {
     if (!drag.active || drag.pointerId !== event.pointerId) {
       return;
     }
+    const didMove = drag.moved;
     drag.active = false;
     drag.pointerId = null;
     setIsPanningBoard(false);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    if (didMove) {
+      window.setTimeout(() => {
+        boardDragRef.current.moved = false;
+      }, 0);
     }
   }
 
