@@ -1,23 +1,25 @@
 import type { CSSProperties, PointerEvent } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { TonConnectButton, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
+import { useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
 import {
   BookOpen,
+  ChevronDown,
   CircleDollarSign,
   Eraser,
   ExternalLink,
   Grid3X3,
   ImagePlus,
   Layers3,
+  LogOut,
   Maximize2,
   Pause,
   Play,
   RefreshCw,
-  RotateCcw,
   Save,
   Settings2,
   Trash2,
   Upload,
+  Wallet,
   X,
   ZoomIn,
   ZoomOut,
@@ -28,7 +30,6 @@ import {
   BOARD_HEIGHT,
   BOARD_WIDTH,
   DEPLOY_VALUE_TON,
-  GAS_BUFFER_TON,
   type Network,
   attachedValueForPrice,
   createBoardDeployment,
@@ -48,7 +49,7 @@ type PixelCell = {
   pending: boolean;
 };
 
-type ActiveView = 'boards' | 'deploy' | 'place' | 'manage';
+type ActiveView = 'boards' | 'deploy' | 'manage';
 
 type SavedBoard = {
   id: string;
@@ -81,11 +82,11 @@ const MIN_BOARD_ZOOM = 0.5;
 const MAX_BOARD_ZOOM = 4;
 const BOARD_ZOOM_STEP = 0.25;
 
-function createEmptyGrid(): PixelCell[] {
+function createEmptyGrid(basePriceNano = BASE_PIXEL_PRICE_NANO): PixelCell[] {
   return Array.from({ length: BOARD_WIDTH * BOARD_HEIGHT }, () => ({
     imageUrl: '',
     pricePaidNano: 0n,
-    nextPriceNano: BASE_PIXEL_PRICE_NANO,
+    nextPriceNano: basePriceNano,
     pending: false,
   }));
 }
@@ -173,9 +174,9 @@ type GridState = {
   cells: PixelCell[];
 };
 
-function gridFromSnapshot(snapshotPixels: Awaited<ReturnType<typeof fetchBoardSnapshot>>['pixels']) {
-  const nextGrid = createEmptyGrid();
-  for (const pixel of snapshotPixels) {
+function gridFromSnapshot(snapshot: Awaited<ReturnType<typeof fetchBoardSnapshot>>) {
+  const nextGrid = createEmptyGrid(snapshot.basePriceNano);
+  for (const pixel of snapshot.pixels) {
     if (pixel.index >= 0 && pixel.index < nextGrid.length) {
       nextGrid[pixel.index] = {
         imageUrl: pixel.imageUrl,
@@ -219,6 +220,8 @@ function normalizeZoom(value: number): number {
 export default function App() {
   const [tonConnectUI] = useTonConnectUI();
   const walletAddress = useTonAddress(false);
+  const walletAddressDisplay = useTonAddress(true);
+  const [isWalletMenuOpen, setIsWalletMenuOpen] = useState(false);
   const boardScrollRef = useRef<HTMLDivElement>(null);
   const boardDragRef = useRef<BoardDragState>({
     active: false,
@@ -315,6 +318,12 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('pixelBattleNetwork', network);
   }, [network]);
+
+  useEffect(() => {
+    if (!walletAddress) {
+      setIsWalletMenuOpen(false);
+    }
+  }, [walletAddress]);
 
   useEffect(() => {
     saveSavedBoards(savedBoards);
@@ -505,7 +514,8 @@ export default function App() {
       setStatus('Refreshing board');
       const targetGridKey = gridStorageKey(boardNetwork, normalizedAddress);
       const snapshot = await fetchBoardSnapshot(normalizedAddress, boardNetwork);
-      setGridForKey(targetGridKey, gridFromSnapshot(snapshot.pixels));
+      setGridForKey(targetGridKey, gridFromSnapshot(snapshot));
+      setPriceTon(formatTon(snapshot.basePriceNano));
       setStatus(`Board refreshed: ${snapshot.placedCount} cells`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Refresh failed');
@@ -678,40 +688,69 @@ export default function App() {
   return (
     <main className="app-shell">
       <header className="topbar">
-        <div className="brand-lockup">
-          <div className="brand-mark">IB</div>
-          <div>
-            <div className="eyebrow">TON contract game</div>
-            <h1>TON Banners</h1>
-            <div className="creator-credit">
-              by <a href="https://t.me/fiscaldev" rel="noreferrer" target="_blank">@fiscaldev</a> on TON and ACTON
+        <div className="topbar-head">
+          <div className="brand-lockup">
+            <div className="brand-mark">IB</div>
+            <div>
+              <div className="eyebrow">TON contract game</div>
+              <h1>TON Banners</h1>
+              <div className="creator-credit">
+                by <a href="https://t.me/fiscaldev" rel="noreferrer" target="_blank">@fiscaldev</a> on TON
+              </div>
             </div>
           </div>
+          <div className="wallet-connect">
+            <button
+              className="wallet-pill"
+              onClick={() => {
+                if (walletAddress) {
+                  setIsWalletMenuOpen((isOpen) => !isOpen);
+                  return;
+                }
+                void tonConnectUI.openModal();
+              }}
+              type="button"
+            >
+              <Wallet size={16} />
+              <span>{walletAddress ? shortAddress(walletAddressDisplay || walletAddress) : 'Connect'}</span>
+              {walletAddress ? <ChevronDown size={14} /> : null}
+            </button>
+            {walletAddress && isWalletMenuOpen ? (
+              <div className="wallet-menu">
+                <button
+                  onClick={() => {
+                    setIsWalletMenuOpen(false);
+                    void tonConnectUI.disconnect();
+                  }}
+                  type="button"
+                >
+                  <LogOut size={15} />
+                  Disconnect
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
-        <nav className="mode-tabs" aria-label="Workspace">
-          <button className={activeView === 'boards' ? 'active' : ''} onClick={() => setActiveView('boards')} type="button">
-            <Layers3 size={17} />
-            Boards
-          </button>
-          <button className={activeView === 'deploy' ? 'active' : ''} onClick={() => setActiveView('deploy')} type="button">
-            <Upload size={17} />
-            Deploy
-          </button>
-          <button className={activeView === 'place' ? 'active' : ''} onClick={() => setActiveView('place')} type="button">
-            <ImagePlus size={17} />
-            Image
-          </button>
-          <button className={activeView === 'manage' ? 'active' : ''} onClick={() => setActiveView('manage')} type="button">
-            <Settings2 size={17} />
-            Owner
-          </button>
-        </nav>
-        <div className="header-actions">
+
+        <div className="topbar-actions">
+          <nav className="mode-tabs" aria-label="Workspace">
+            <button className={activeView === 'boards' ? 'active' : ''} onClick={() => setActiveView('boards')} type="button">
+              <Layers3 size={17} />
+              Boards
+            </button>
+            <button className={activeView === 'deploy' ? 'active' : ''} onClick={() => setActiveView('deploy')} type="button">
+              <Upload size={17} />
+              Deploy
+            </button>
+            <button className={activeView === 'manage' ? 'active' : ''} onClick={() => setActiveView('manage')} type="button">
+              <Settings2 size={17} />
+              Owner
+            </button>
+          </nav>
           <button className="guide-button" onClick={() => setIsGuideOpen(true)} type="button">
             <BookOpen size={17} />
             Guide
           </button>
-          <TonConnectButton />
         </div>
       </header>
 
@@ -719,21 +758,17 @@ export default function App() {
         <div>
           <p className="intro-kicker">
             {activeView === 'boards'
-              ? 'Board viewer'
+              ? 'Board workspace'
               : activeView === 'deploy'
                 ? 'Board factory'
-                : activeView === 'place'
-                  ? 'Image transaction'
-                  : 'Owner controls'}
+                : 'Owner controls'}
           </p>
           <h2>
             {activeView === 'boards'
-              ? 'Apply a board. Watch it. Keep it local.'
+              ? 'Select a cell. Paste an image. Send it.'
               : activeView === 'deploy'
                 ? 'Deploy another 32x32 board.'
-                : activeView === 'place'
-                  ? 'Send a picture into one cell.'
-                  : 'Tune the contract you own.'}
+                : 'Tune the contract you own.'}
           </h2>
         </div>
         <div className="view-stats">
@@ -763,15 +798,17 @@ export default function App() {
                 Cell {selectedCell.x}, {selectedCell.y}
               </strong>
             </div>
-            <div className="metric">
-              <span>Price</span>
-              <strong>{formatTon(selectedPixel.nextPriceNano)} TON</strong>
+            <div className="board-metrics">
+              <div className="metric">
+                <span>Price</span>
+                <strong>{formatTon(selectedPixel.nextPriceNano)} TON</strong>
+              </div>
+              <div className="metric">
+                <span>Attach</span>
+                <strong>{formatTon(attachedValueForPrice(selectedPixel.nextPriceNano))}</strong>
+              </div>
             </div>
-            <div className="metric">
-              <span>Attach</span>
-              <strong>{formatTon(attachedValueForPrice(selectedPixel.nextPriceNano))}</strong>
-            </div>
-            <div className="tool-group" aria-label="Board tools">
+            <div className="board-actions">
               <button
                 className="tool-button"
                 disabled={isRefreshing}
@@ -782,6 +819,24 @@ export default function App() {
                 <RefreshCw size={17} />
                 <span>{isRefreshing ? 'Refreshing' : 'Refresh'}</span>
               </button>
+              <div className="network-toggle" aria-label="Network">
+                <button
+                  className={network === 'testnet' ? 'active' : ''}
+                  onClick={() => setNetwork('testnet')}
+                  type="button"
+                >
+                  Testnet
+                </button>
+                <button
+                  className={network === 'mainnet' ? 'active' : ''}
+                  onClick={() => setNetwork('mainnet')}
+                  type="button"
+                >
+                  Mainnet
+                </button>
+              </div>
+            </div>
+            <div className="zoom-strip" aria-label="Board zoom">
               <button className="tool-button square" onClick={zoomOut} title="Zoom out" type="button">
                 <ZoomOut size={17} />
               </button>
@@ -799,28 +854,12 @@ export default function App() {
               <button className="tool-button square" onClick={zoomIn} title="Zoom in" type="button">
                 <ZoomIn size={17} />
               </button>
-              <button className="tool-button square" onClick={resetBoardZoom} title="Reset zoom" type="button">
-                <RotateCcw size={17} />
+              <button className="tool-button zoom-reset" onClick={resetBoardZoom} title="Reset zoom to 100%" type="button">
+                1x
               </button>
               <button className="tool-button fit-button" onClick={fitBoardToView} title="Fit board" type="button">
                 <Maximize2 size={17} />
                 <span>Fit</span>
-              </button>
-            </div>
-            <div className="network-toggle" aria-label="Network">
-              <button
-                className={network === 'testnet' ? 'active' : ''}
-                onClick={() => setNetwork('testnet')}
-                type="button"
-              >
-                Testnet
-              </button>
-              <button
-                className={network === 'mainnet' ? 'active' : ''}
-                onClick={() => setNetwork('mainnet')}
-                type="button"
-              >
-                Mainnet
               </button>
             </div>
           </div>
@@ -862,68 +901,140 @@ export default function App() {
 
         <aside className="control-panel">
           {activeView === 'boards' ? (
-            <section className="tool-panel">
-              <div className="section-title">
-                <Grid3X3 size={18} />
-                <span>Boards</span>
-              </div>
-              <div className="input-action-row">
-                <label>
-                  Active board
-                  <input
-                    value={boardAddressDraft}
-                    onChange={(event) => setBoardAddressDraft(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        void applyBoardAddress();
+            <>
+              <section className="tool-panel image-tool-panel">
+                <div className="section-title">
+                  <ImagePlus size={18} />
+                  <span>Image</span>
+                </div>
+                <button
+                  aria-label="Open image preview"
+                  className="image-preview"
+                  disabled={!previewImageUrl}
+                  onClick={() => {
+                    if (previewImageUrl) {
+                      setFullImage({ imageUrl: previewImageUrl });
+                    }
+                  }}
+                  type="button"
+                >
+                  {previewImageUrl ? <img src={previewImageUrl} alt="" /> : <span>Preview</span>}
+                </button>
+                <div className="coordinate-row compact-coordinate-row">
+                  <label>
+                    X
+                    <input
+                      max={BOARD_WIDTH - 1}
+                      min={0}
+                      type="number"
+                      value={selectedCell.x}
+                      onChange={(event) =>
+                        setSelectedCell((current) => ({
+                          ...current,
+                          x: clampCoordinate(Number(event.target.value), BOARD_WIDTH - 1),
+                        }))
                       }
-                    }}
-                    placeholder="Board address"
-                  />
+                    />
+                  </label>
+                  <label>
+                    Y
+                    <input
+                      max={BOARD_HEIGHT - 1}
+                      min={0}
+                      type="number"
+                      value={selectedCell.y}
+                      onChange={(event) =>
+                        setSelectedCell((current) => ({
+                          ...current,
+                          y: clampCoordinate(Number(event.target.value), BOARD_HEIGHT - 1),
+                        }))
+                      }
+                    />
+                  </label>
+                </div>
+                <label>
+                  Image URL
+                  <input value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} />
                 </label>
-                <button className="primary" disabled={!canApplyBoardDraft} onClick={applyBoardAddress} type="button">
-                  Apply
+                <div className="price-strip">
+                  <div>
+                    <span>Cell price</span>
+                    <strong>{formatTon(selectedPixel.nextPriceNano)} TON</strong>
+                  </div>
+                  <div>
+                    <span>Attach</span>
+                    <strong>{formatTon(attachedValueForPrice(selectedPixel.nextPriceNano))} TON</strong>
+                  </div>
+                </div>
+                <button className="primary full-width" onClick={placeSelectedImage} type="button">
+                  <ImagePlus size={18} />
+                  Place image
                 </button>
-              </div>
-              <div className="button-row">
-                <button className="ghost" onClick={saveCurrentBoard} type="button">
-                  <Save size={17} />
-                  Save
-                </button>
-                <button className="ghost danger" onClick={clearAllLocalData} type="button">
-                  <Eraser size={17} />
-                  Clear local
-                </button>
-              </div>
-              <div className="saved-list">
-                {savedBoards.length ? (
-                  savedBoards.map((board) => (
-                    <div className="saved-board" key={board.id}>
-                      <button
-                        className="saved-main"
-                        onClick={() => void openSavedBoard(board)}
-                        type="button"
-                      >
-                        <strong>{board.label}</strong>
-                        <span>
-                          {board.network} · {shortAddress(board.address)}
-                        </span>
-                      </button>
-                      <button
-                        className="icon-button"
-                        onClick={() => removeSavedBoard(board.id)}
-                        title="Remove board"
-                        type="button"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  ))
-                ) : (
-                  <div className="empty-state">No saved boards</div>
-                )}
-              </div>
-            </section>
+              </section>
+
+              <section className="tool-panel">
+                <div className="section-title">
+                  <Grid3X3 size={18} />
+                  <span>Boards</span>
+                </div>
+                <div className="input-action-row">
+                  <label>
+                    Active board
+                    <input
+                      value={boardAddressDraft}
+                      onChange={(event) => setBoardAddressDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          void applyBoardAddress();
+                        }
+                      }}
+                      placeholder="Board address"
+                    />
+                  </label>
+                  <button className="primary" disabled={!canApplyBoardDraft} onClick={applyBoardAddress} type="button">
+                    Apply
+                  </button>
+                </div>
+                <div className="button-row">
+                  <button className="ghost" onClick={saveCurrentBoard} type="button">
+                    <Save size={17} />
+                    Save
+                  </button>
+                  <button className="ghost danger" onClick={clearAllLocalData} type="button">
+                    <Eraser size={17} />
+                    Clear local
+                  </button>
+                </div>
+                <div className="saved-list">
+                  {savedBoards.length ? (
+                    savedBoards.map((board) => (
+                      <div className="saved-board" key={board.id}>
+                        <button
+                          className="saved-main"
+                          onClick={() => void openSavedBoard(board)}
+                          type="button"
+                        >
+                          <strong>{board.label}</strong>
+                          <span>
+                            {board.network} · {shortAddress(board.address)}
+                          </span>
+                        </button>
+                        <button
+                          className="icon-button"
+                          onClick={() => removeSavedBoard(board.id)}
+                          title="Remove board"
+                          type="button"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="empty-state">No saved boards</div>
+                  )}
+                </div>
+              </section>
+            </>
           ) : null}
 
           {activeView === 'deploy' ? (
@@ -967,82 +1078,6 @@ export default function App() {
               <div className="compact-meta">
                 <span>Deploy</span>
                 <strong>{DEPLOY_VALUE_TON} TON</strong>
-              </div>
-            </section>
-          ) : null}
-
-          {activeView === 'place' ? (
-            <section className="tool-panel">
-              <div className="section-title">
-                <ImagePlus size={18} />
-                <span>Image</span>
-              </div>
-              <button
-                aria-label="Open image preview"
-                className="image-preview"
-                disabled={!previewImageUrl}
-                onClick={() => {
-                  if (previewImageUrl) {
-                    setFullImage({ imageUrl: previewImageUrl });
-                  }
-                }}
-                type="button"
-              >
-                {previewImageUrl ? <img src={previewImageUrl} alt="" /> : <span>Preview</span>}
-              </button>
-              <div className="coordinate-row">
-                <label>
-                  X
-                  <input
-                    max={BOARD_WIDTH - 1}
-                    min={0}
-                    type="number"
-                    value={selectedCell.x}
-                    onChange={(event) =>
-                      setSelectedCell((current) => ({
-                        ...current,
-                        x: clampCoordinate(Number(event.target.value), BOARD_WIDTH - 1),
-                      }))
-                    }
-                  />
-                </label>
-                <label>
-                  Y
-                  <input
-                    max={BOARD_HEIGHT - 1}
-                    min={0}
-                    type="number"
-                    value={selectedCell.y}
-                    onChange={(event) =>
-                      setSelectedCell((current) => ({
-                        ...current,
-                        y: clampCoordinate(Number(event.target.value), BOARD_HEIGHT - 1),
-                      }))
-                    }
-                  />
-                </label>
-              </div>
-              <label>
-                Image URL
-                <input value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} />
-              </label>
-              <div className="price-strip">
-                <div>
-                  <span>Cell price</span>
-                  <strong>{formatTon(selectedPixel.nextPriceNano)} TON</strong>
-                </div>
-                <div>
-                  <span>Attach</span>
-                  <strong>{formatTon(attachedValueForPrice(selectedPixel.nextPriceNano))} TON</strong>
-                </div>
-              </div>
-              <button className="primary full-width" onClick={placeSelectedImage} type="button">
-                <ImagePlus size={18} />
-                Place image
-              </button>
-              <div className="compact-meta">
-                <span>Buffer</span>
-                <strong>{GAS_BUFFER_TON} TON</strong>
               </div>
             </section>
           ) : null}
@@ -1159,7 +1194,7 @@ export default function App() {
               <div>
                 <span>03</span>
                 <strong>Place an image</strong>
-                <p>Open Image, choose a cell, paste a jpg/png/webp URL, then confirm the TonConnect transaction.</p>
+                <p>Open Boards, choose a cell, paste a jpg/png/webp URL near the board, then confirm the TonConnect transaction.</p>
               </div>
               <div>
                 <span>04</span>
