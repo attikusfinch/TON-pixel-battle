@@ -6,7 +6,7 @@ type AllowedPixelBoardMessage = SetPrice | SetPaused | SetPayoutWallet | Withdra
 contract PixelBoard {
     author: "Acton User"
     version: "1.0.0"
-    description: "Pixel Battle board with paid pixel placement"
+    description: "Image Battle board with paid image placement"
     storage: PixelBoardStorage
     incomingMessages: AllowedPixelBoardMessage
 }
