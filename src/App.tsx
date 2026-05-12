@@ -682,7 +682,7 @@ export default function App() {
           <div className="brand-mark">IB</div>
           <div>
             <div className="eyebrow">TON contract game</div>
-            <h1>Image Battle</h1>
+            <h1>TON Banners</h1>
             <div className="creator-credit">
               by <a href="https://t.me/fiscaldev" rel="noreferrer" target="_blank">@fiscaldev</a> on TON and ACTON
             </div>
@@ -1132,14 +1132,14 @@ export default function App() {
           className="guide-overlay"
           onClick={() => setIsGuideOpen(false)}
           role="dialog"
-          aria-label="Image Battle guide"
+          aria-label="TON Banners guide"
           aria-modal="true"
         >
           <div className="guide-card" onClick={(event) => event.stopPropagation()}>
             <div className="guide-top">
               <div>
                 <span>Quick guide</span>
-                <strong>How to play Image Battle</strong>
+                <strong>How to play TON Banners</strong>
               </div>
               <button className="icon-button" onClick={() => setIsGuideOpen(false)} title="Close" type="button">
                 <X size={18} />

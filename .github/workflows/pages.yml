@@ -38,7 +38,7 @@ jobs:
 
       - name: Build
         env:
-          VITE_BASE_PATH: TON-pixel-battle
+          VITE_BASE_PATH: TON-banners
         run: npm run build
 
       - name: Disable Jekyll

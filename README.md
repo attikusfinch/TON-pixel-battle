@@ -1,4 +1,4 @@
-# Image Battle
+# TON Banners
 
 Acton + React prototype for a TON image-board game.
 
@@ -62,7 +62,7 @@ deploy `stateInit` and transfer comment payload locally, then the wallet signs
 and broadcasts the transaction.
 
 TON Connect uses the manifest from the GitHub repo by default:
-`https://raw.githubusercontent.com/attikusfinch/TON-pixel-battle/cceb10a1465c8efdc106cf4341916b7def9a0275/public/tonconnect-manifest.json`.
+`https://attikusfinch.github.io/TON-banners/tonconnect-manifest.json`.
 After manifest/icon changes, push `master` so wallets can fetch the latest
 HTTPS version. Override with `VITE_TONCONNECT_MANIFEST_URL` if you deploy the
 app to your own domain later.

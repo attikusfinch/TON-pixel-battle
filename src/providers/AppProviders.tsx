@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TonConnectUIProvider } from '@tonconnect/ui-react';
 
 const DEFAULT_MANIFEST_URL =
-  'https://raw.githubusercontent.com/attikusfinch/TON-pixel-battle/cceb10a1465c8efdc106cf4341916b7def9a0275/public/tonconnect-manifest.json';
+  'https://attikusfinch.github.io/TON-banners/tonconnect-manifest.json';
 
 const manifestUrl = import.meta.env.VITE_TONCONNECT_MANIFEST_URL ?? DEFAULT_MANIFEST_URL;
 
